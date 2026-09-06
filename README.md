@@ -8,21 +8,43 @@ Grew out of `~/copychat.sh`. Python stdlib only — no npm, no node, no build st
 
 ## Install
 
-No npm and no node. It runs on the `python3` that ships with macOS, which is
-deliberate: the npm tool this replaces died because the default node here is v14.
+No npm, no node, no pip. One file, on the `python3` that ships with macOS.
+The repo is private, so the machine needs to be signed into GitHub as you.
 
-On this Mac it is already installed at `~/.local/bin/powertools`, running the
-source in `~/claude-powertools/`, so edits to `powertools.py` or `ui.html` take effect
-immediately.
+    git clone https://github.com/navneetbind/claude-powertools.git ~/claude-powertools
+    cd ~/claude-powertools && ./install.sh
 
-For any other Mac, build one self-contained file and copy it over:
+That puts a single executable at `~/.local/bin/powertools` and a double-click
+app at `~/Applications/Claude PowerTools.app`. Then:
 
-    powertools bundle --out ~/claude-powertools/dist/powertools   # bakes ui.html into the script
-    ./install.sh                                     # or just copy dist/powertools
-                                                     # anywhere on your PATH
+    powertools
 
-`dist/powertools` is a single executable with no dependencies and nothing to
-install alongside it.
+If `powertools` is not found, `~/.local/bin` is not on your PATH yet. The
+installer prints the one line to add to `~/.zshrc`.
+
+## Uninstall
+
+    cd ~/claude-powertools && ./uninstall.sh          # app + launcher
+    cd ~/claude-powertools && ./uninstall.sh --purge  # also the index, names, reset times, backups
+
+Neither touches Claude's own data. Your chats, memory and settings are exactly
+where Claude left them.
+
+## Update
+
+    cd ~/claude-powertools && git pull && ./install.sh
+
+## Developing
+
+`install.sh` copies the built single file from `dist/`. To run from source
+instead, so edits take effect immediately:
+
+    python3 ~/claude-powertools/powertools.py
+
+After changing `powertools.py` or `ui.html`, rebuild the single file before
+committing:
+
+    python3 powertools.py bundle --out dist/powertools
 
 ## Use
 

@@ -1,13 +1,17 @@
 #!/bin/sh
-# Install powertools: one self-contained file, no npm, no node, no dependencies.
-# Uses the python3 that ships with macOS.
+# Claude PowerTools installer. No npm, no node, no pip: one file, uses the
+# python3 that ships with macOS. Run from a clone of the repo.
 set -e
+HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$HOME/.local/bin"
-cp "$(dirname "$0")/dist/powertools" "$HOME/.local/bin/powertools"
+cp "$HERE/dist/powertools" "$HOME/.local/bin/powertools"
 chmod +x "$HOME/.local/bin/powertools"
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
-  *) echo 'Add this to ~/.zshrc:  export PATH="$HOME/.local/bin:$PATH"' ;;
+  *) printf '\nAdd this line to ~/.zshrc, then open a new terminal:\n  export PATH="$HOME/.local/bin:$PATH"\n\n' ;;
 esac
-echo "installed: $HOME/.local/bin/powertools"
-echo "run it with:  powertools"
+"$HOME/.local/bin/powertools" make-app --out "$HOME/Applications/Claude PowerTools.app" >/dev/null
+echo "installed  ~/.local/bin/powertools"
+echo "app        ~/Applications/Claude PowerTools.app   (double-click, or drag to the Dock)"
+echo
+echo "run it:    powertools"
