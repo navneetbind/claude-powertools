@@ -1362,9 +1362,44 @@ ACCOUNT_RE = re.compile(
     r'.{0,400}?"organization":\{"id":\d+,"uuid":"([0-9a-f-]{36})","name":"([^"]*)"', re.S)
 
 
+_DESK_MEMO = {"sig": None, "data": {}}
+
+
 def desktop_accounts() -> dict:
     """The account each Claude app is signed into, read from the app's own
-    browser cache. Works even for apps that never touched Claude Code."""
+    browser cache. Works even for apps that never touched Claude Code.
+
+    Decompressing that cache in pure Python costs seconds, so the result is
+    memoised on the cache files' (path, mtime, size) and also written to disk,
+    so neither a page load nor a restart pays for it twice."""
+    files = []
+    for inst, _ in instance_roots():
+        base = os.path.join(SUPPORT, inst, "Local Storage", "leveldb")
+        files += sorted(glob.glob(os.path.join(base, "*.ldb")) + glob.glob(os.path.join(base, "*.log")))
+    sig = [(f, os.path.getmtime(f), os.path.getsize(f)) for f in files if os.path.exists(f)]
+    if _DESK_MEMO["sig"] == sig:
+        return _DESK_MEMO["data"]
+    cache_file = os.path.join(STATE, "accounts-cache.json")
+    try:
+        with open(cache_file) as fh:
+            c = json.load(fh)
+        if [tuple(x) for x in c.get("sig", [])] == sig:
+            _DESK_MEMO.update(sig=sig, data=c["data"])
+            return c["data"]
+    except Exception:
+        pass
+    out = _scan_desktop_accounts()
+    _DESK_MEMO.update(sig=sig, data=out)
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        with open(cache_file, "w") as fh:
+            json.dump({"sig": sig, "data": out}, fh)
+    except Exception:
+        pass
+    return out
+
+
+def _scan_desktop_accounts() -> dict:
     out = {}
     for inst, _ in instance_roots():
         base = os.path.join(SUPPORT, inst, "Local Storage", "leveldb")
