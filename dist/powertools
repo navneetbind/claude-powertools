@@ -2479,9 +2479,11 @@ def make_app(dest: str) -> str:
     os.makedirs(macos)
     exe = os.path.join(macos, "powertools")
     with open(exe, "w") as fh:
+        # env, not sys.executable: the app keeps working even if the python
+        # that ran the installer is later removed or upgraded
         fh.write(
-            "#!/bin/sh\nexec %s %s open\n"
-            % (shlex.quote(sys.executable), shlex.quote(os.path.abspath(__file__)))
+            "#!/bin/sh\nexec /usr/bin/env python3 %s open\n"
+            % shlex.quote(os.path.abspath(__file__))
         )
     os.chmod(exe, 0o755)
     with open(os.path.join(dest, "Contents", "Info.plist"), "w") as fh:
