@@ -2545,7 +2545,10 @@ def make_app(dest: str) -> str:
 def serve(port: int, open_browser: bool = True):
     print("indexing…", flush=True)
     st = build_index()
-    print(f"  {st['total']} chats ({st['updated']} updated)")
+    print(f"  {st['total']} chats ({st['updated']} updated)", flush=True)
+    print("reading which account each Claude app is signed into…", flush=True)
+    names = sorted({d["email"] for d in account_directory().values()})
+    print(f"  {len(names)} account(s): " + ", ".join(names), flush=True)
     os.makedirs(STATE, exist_ok=True)
     tokfile = os.path.join(STATE, "token")
     try:

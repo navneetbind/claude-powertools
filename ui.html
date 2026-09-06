@@ -313,10 +313,16 @@ table.conn tr:hover td{background:var(--card)}
 
 <script>
 const T=new URLSearchParams(location.search).get('t');
+function dead(title,body){
+  document.body.innerHTML='<div style="padding:40px;max-width:560px;font:15px/1.6 system-ui"><h2 style="margin:0 0 8px">'+title+'</h2>'+body+
+    '<div style="margin-top:16px"><button onclick="location.reload()" style="padding:8px 14px;font-size:14px">Try again</button></div></div>';
+}
 const api=(p,o={})=>fetch(p+(p.includes('?')?'&':'?')+'t='+T,o).then(r=>{
-  if(r.status===403){document.body.innerHTML='<div style="padding:40px;max-width:520px;font:15px/1.6 system-ui"><h2 style="margin:0 0 8px">This link has expired</h2>'+
-    'PowerTools was restarted with a new key. Open it again from <b>Claude PowerTools.app</b> or run <code>powertools</code> in a terminal, and use the link it prints.</div>';throw new Error('stale token')}
-  return r.json()});
+  if(r.status===403){dead('This link has expired','PowerTools was restarted with a new key. Open it again from <b>Claude PowerTools.app</b> or run <code>powertools</code> in a terminal, and use the link it prints.');throw new Error('stale token')}
+  if(!r.ok){dead('Something went wrong on the server','It answered '+r.status+' for <code>'+p.split('?')[0]+'</code>. Run <code>powertools</code> in a terminal to see the error.');throw new Error('http '+r.status)}
+  return r.json()}).catch(e=>{
+  if(!/stale token|^http /.test(String(e.message)))dead('PowerTools is not running','The page could not reach it. Start it from <b>Claude PowerTools.app</b> or run <code>powertools</code> in a terminal, then try again.');
+  throw e});
 const $=id=>document.getElementById(id);
 const esc=s=>(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const when=ms=>ms?new Date(ms).toISOString().slice(0,10):'—';
