@@ -1,0 +1,1590 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>Claude PowerTools</title>
+<style>
+:root{--bg:#faf9f7;--fg:#1c1b1a;--dim:#6b6862;--line:#e2ded7;--card:#fff;--acc:#b4530a;--sel:#fdf3e7;--warn:#a3341f;--ok:#2f6b3a;--chat-bg:#faf9f5;--bubble:#f0eee6;--code-bg:#f4f2ec}
+@media(prefers-color-scheme:dark){:root{--bg:#191817;--fg:#eceae6;--dim:#96918a;--line:#33312e;--card:#211f1d;--acc:#e08442;--sel:#2c2622;--warn:#e0705a;--ok:#79c088;--chat-bg:#1f1e1d;--bubble:#302e2b;--code-bg:#26251f}}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 ui-sans-serif,-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+#wrap{display:grid;grid-template-columns:262px 1fr;height:100vh}
+aside{border-right:1px solid var(--line);overflow:auto;padding:14px}
+main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
+h1{font-size:15px;margin:0 0 3px;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:12px;margin-bottom:14px}
+.b{padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:3px;border:1px solid transparent}
+.b:hover{background:var(--card)}
+.b.on{background:var(--sel);border-color:var(--acc)}
+.b .t{font-weight:600;font-size:13px;display:flex;gap:7px;align-items:center}
+.b .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.b .cnt{flex:0 0 auto;font-variant-numeric:tabular-nums}
+.b .acts{flex:0 0 auto}
+.b .s{color:var(--dim);font-size:11px;font-family:ui-monospace,Menlo,monospace;margin-top:2px}
+.b .acts{opacity:0;display:flex;gap:3px}
+.b:hover .acts,.b.on .acts{opacity:1}
+.ico{border:1px solid var(--line);background:var(--bg);color:var(--dim);border-radius:5px;
+     width:20px;height:20px;line-height:1;padding:0;font-size:11px;display:flex;align-items:center;justify-content:center}
+.ico:hover{border-color:var(--acc);color:var(--acc)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px;margin-bottom:12px}
+.kv dt{color:var(--dim)}
+.kv dd{margin:0;font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all}
+.inst{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:14px 0 6px}
+header{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:9px;align-items:center;flex-wrap:wrap;flex:0 0 auto}
+input[type=search],input[type=text]{padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font-size:13px}
+#q{flex:1;min-width:170px}
+button{padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);cursor:pointer;font-size:13px;white-space:nowrap}
+button:hover{border-color:var(--acc)}
+button.p{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+button.p:hover{filter:brightness(1.08)}
+button.danger{border-color:var(--warn);color:var(--warn)}
+button:disabled{opacity:.4;cursor:default}
+label.ck{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
+#list{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse}
+th{position:sticky;top:0;background:var(--bg);text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);padding:7px 10px;border-bottom:1px solid var(--line);font-weight:600;z-index:2}
+td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:hover td{background:var(--card)}
+tbody tr.sel td{background:var(--sel)}
+.ttl{font-weight:600;cursor:pointer}
+.ttl:hover{color:var(--acc)}
+.meta{color:var(--dim);font-size:11px;font-family:ui-monospace,Menlo,monospace;white-space:nowrap}
+.n{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px}
+.cbx{width:34px;text-align:center}
+#bar{padding:9px 14px;border-top:1px solid var(--line);display:none;gap:10px;align-items:center;background:var(--card);flex-wrap:wrap;flex:0 0 auto}
+#bar.on{display:flex}
+#selinfo{font-weight:600}
+.link{color:var(--acc);cursor:pointer;text-decoration:underline;font-size:12px}
+select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font-size:13px;max-width:320px}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:22px;z-index:50}
+.ov.on{display:flex}
+.dlg{background:var(--bg);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:90vh;box-shadow:0 18px 50px rgba(0,0,0,.3)}
+#reader{width:min(1000px,100%);height:90vh}
+#movebox{width:min(680px,100%)}
+.dhead{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dhead .grow{flex:1;min-width:0}
+.dtitle{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dmeta{color:var(--dim);font-size:11px;font-family:ui-monospace,Menlo,monospace;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rmeta,#rmodels{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.5}
+.dbody{overflow-y:auto;overflow-x:hidden;padding:22px 20px;background:var(--chat-bg)}
+#rbody{max-width:46rem;margin:0 auto;min-width:0}
+.turn{margin-bottom:26px}
+.turn.user{display:block;overflow:hidden}
+.bubble{background:var(--bubble);border:1px solid var(--line);border-radius:14px;padding:11px 15px;width:fit-content;max-width:min(88%,40rem);margin-left:auto;overflow:hidden;font-size:14.5px;line-height:1.6}
+.turn.assistant .prose{font-size:15px;line-height:1.68;min-width:0}
+.stamp{font-size:10.5px;color:var(--dim);font-family:ui-monospace,Menlo,monospace;margin-bottom:5px}
+.turn.user .stamp{text-align:right}
+.prose p{margin:0 0 .75em}
+.prose p:last-child{margin-bottom:0}
+.prose h1,.prose h2,.prose h3{margin:1.1em 0 .45em;line-height:1.3;font-weight:650}
+.prose h1{font-size:1.32em}.prose h2{font-size:1.18em}.prose h3{font-size:1.05em}
+.prose ul,.prose ol{margin:0 0 .75em;padding-left:1.35em}
+.prose li{margin:.2em 0}
+.prose a{color:var(--acc)}
+.prose code{background:var(--code-bg);border:1px solid var(--line);border-radius:4px;padding:.08em .34em;font:12.5px/1.4 ui-monospace,Menlo,monospace}
+.prose pre{background:var(--code-bg);border:1px solid var(--line);border-radius:9px;padding:11px 13px;overflow-x:auto;max-width:100%;margin:0 0 .8em}
+.prose pre code{background:none;border:0;padding:0;font-size:12.5px;line-height:1.55}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:9px;margin:0 0 .85em;max-width:100%}
+.prose table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0}
+.prose th,.prose td{padding:7px 11px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+.prose thead th{background:var(--code-bg);font-weight:650;white-space:nowrap;position:sticky;top:0}
+.prose tbody tr:last-child td{border-bottom:0}
+.prose tbody tr:hover td{background:var(--code-bg)}
+.prose td code,.prose th code{white-space:nowrap}
+.prose blockquote{margin:0 0 .75em;padding-left:.9em;border-left:2px solid var(--line);color:var(--dim)}
+.prose hr{border:0;border-top:1px solid var(--line);margin:1.1em 0}
+details.step{border:1px solid var(--line);border-radius:9px;background:var(--card);margin:0 0 8px;font-size:13px}
+details.step>summary{cursor:pointer;padding:7px 11px;list-style:none;display:flex;gap:8px;align-items:center;color:var(--dim)}
+details.step>summary::-webkit-details-marker{display:none}
+details.step>summary::before{content:"›";display:inline-block;transition:transform .12s;font-size:15px}
+details.step[open]>summary::before{transform:rotate(90deg)}
+.stepname{font-family:ui-monospace,Menlo,monospace;color:var(--fg);font-size:12.5px}
+details.step pre{margin:0;padding:9px 12px;border-top:1px solid var(--line);white-space:pre-wrap;word-break:break-word;font:12px/1.55 ui-monospace,Menlo,monospace;max-height:340px;overflow:auto;color:var(--dim)}
+.warn{background:var(--sel);border:1px solid var(--acc);padding:9px 11px;border-radius:8px;font-size:13px;margin-bottom:12px}
+.shot{display:block;max-width:min(100%,340px);max-height:200px;width:auto;height:auto;object-fit:contain;object-position:left top;border:1px solid var(--line);border-radius:9px;margin:6px 0;cursor:zoom-in;background:var(--code-bg)}
+.shot:hover{border-color:var(--acc)}
+.files{border:1px solid var(--line);border-radius:9px;background:var(--card);padding:9px 12px;margin-bottom:16px;font-size:13px}
+.files .hd{font-weight:650;margin-bottom:5px}
+.files .row{display:flex;gap:8px;align-items:baseline;padding:2px 0}
+.files code{font-size:11.5px;word-break:break-all}
+.gone{color:var(--warn)}
+.inner{position:relative}
+.bubble.clamped .inner{max-height:220px;overflow:hidden}
+.bubble.clamped .inner::after{content:"";position:absolute;left:0;right:0;bottom:0;height:64px;
+  background:linear-gradient(to bottom,transparent,var(--bubble))}
+.showmore{margin-top:4px;font-size:12.5px;color:var(--acc);background:none;border:0;padding:3px 0;cursor:pointer;font-weight:600}
+.showmore:hover{text-decoration:underline}
+.turn.curmatch{outline:2px solid var(--acc);outline-offset:6px;border-radius:12px}
+mark.cur{outline:2px solid var(--fg);outline-offset:1px}
+.find{display:flex;gap:5px;align-items:center}
+.find .ico{width:22px;height:22px}
+.mrow{border:1px solid var(--line);border-radius:9px;background:var(--card);padding:9px 12px;margin-bottom:7px;cursor:pointer}
+.mrow:hover{border-color:var(--acc)}
+.mrow .mn{font-weight:650;font-size:13.5px}
+.mrow .md{color:var(--dim);font-size:12px;margin-top:2px}
+.tag{font-size:10px;text-transform:uppercase;letter-spacing:.05em;border:1px solid var(--line);
+     border-radius:4px;padding:1px 5px;color:var(--dim);margin-left:6px;white-space:nowrap}
+.mgroup{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);margin:14px 0 6px}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:12px;padding:1px 9px;
+      font-size:11.5px;margin:2px 4px 2px 0;cursor:pointer}
+.chip:hover{border-color:var(--acc);color:var(--acc)}
+.chip.dead{opacity:.5;cursor:default;text-decoration:line-through}
+.tabs{display:flex;gap:4px;margin-bottom:12px}
+.tab{padding:5px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer;font-size:13px;color:var(--dim)}
+.tab.on{background:var(--card);border-color:var(--line);color:var(--fg);font-weight:600}
+.tab:hover{color:var(--fg)}
+table.conn{width:100%;border-collapse:collapse}
+table.conn th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);
+  text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);font-weight:600}
+table.conn td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.conn td:first-child{width:52%}
+table.conn tr:last-child td{border-bottom:0}
+table.conn tr:hover td{background:var(--card)}
+.avatar{width:26px;height:26px;flex:0 0 auto;margin-top:1px;border-radius:7px;background:var(--sel);border:1px solid var(--line);
+  display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:var(--acc)}
+.cname{display:flex;gap:9px;align-items:flex-start}
+.cname>span{min-width:0}
+.cname b{font-size:13.5px;font-weight:650}
+.cwhere{font-size:11px;color:var(--dim);font-family:ui-monospace,Menlo,monospace}
+.ok{color:var(--ok);font-weight:700}
+.off{color:var(--warn)}
+.rowacts{display:flex;gap:6px;align-items:center;justify-content:flex-end;white-space:nowrap}
+.rowacts .ico{width:26px;height:26px;flex:0 0 auto;padding:0}
+.ico svg{width:15px;height:15px;flex:0 0 auto;display:block}
+.rowacts button{height:26px;padding:0 10px;line-height:1;display:inline-flex;align-items:center}
+.keyrow{display:flex;gap:6px;align-items:center;margin-top:4px;font-size:11.5px;color:var(--dim);flex-wrap:wrap}
+.keyval{font-family:ui-monospace,Menlo,monospace;font-size:11px;word-break:break-all;
+  background:var(--code-bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px;max-width:100%}
+.snip{color:var(--dim);font-size:12px;line-height:1.5;margin-top:3px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.snip b{color:var(--acc);font-weight:700}
+.hint{padding:9px 12px;border:1px solid var(--acc);background:var(--sel);border-radius:8px;
+  font-size:12.5px;margin:8px 10px}
+.bar{height:8px;border-radius:4px;background:var(--acc);min-width:2px}
+.barrow{display:grid;grid-template-columns:86px 1fr 70px;gap:10px;align-items:center;font-size:12px;padding:3px 0}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.empty{padding:40px;text-align:center;color:var(--dim)}
+.plan{border:1px solid var(--line);border-radius:8px;max-height:230px;overflow:auto;margin:10px 0}
+.plan div{padding:6px 10px;border-bottom:1px solid var(--line);font-size:13px;display:flex;gap:8px}
+.plan div:last-child{border-bottom:0}
+.badge{font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:1px 5px;border-radius:4px;border:1px solid var(--warn);color:var(--warn);flex:0 0 auto}
+.arrow{display:flex;gap:8px;align-items:center;font-size:13px;flex-wrap:wrap}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:12px}
+.foot{padding:12px 14px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.foot .grow{flex:1;color:var(--dim);font-size:12px}
+.radios{display:flex;gap:8px}
+.radio{border:1px solid var(--line);border-radius:8px;padding:8px 11px;cursor:pointer;font-size:13px}
+.radio.on{border-color:var(--acc);background:var(--sel);font-weight:600}
+.radio small{display:block;color:var(--dim);font-weight:400;font-size:11px}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--acc);border-radius:9px;padding:11px 16px;display:none;z-index:60;box-shadow:0 8px 26px rgba(0,0,0,.28);align-items:center;gap:12px;font-size:13px}
+#toast.on{display:flex}
+</style></head><body>
+<div id="wrap">
+<aside><h1>Claude PowerTools</h1><div class="sub" id="tot">loading…</div><div id="tree"></div><div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px"><button id="usebtn" style="width:100%;margin-bottom:6px">Usage…</button><button id="membtn" style="width:100%;margin-bottom:6px">What Claude remembers…</button><button id="mcpbtn" style="width:100%;margin-bottom:6px">MCP connections…</button><button id="bkbtn" style="width:100%;margin-bottom:6px">Backup &amp; move Mac…</button><button id="setbtn" style="width:100%;margin-bottom:6px">Claude settings…</button><button id="instbtn" style="width:100%">Instances…</button></div></aside>
+<main>
+<header>
+  <input type="search" id="q" placeholder="Search titles…  (/ to focus)">
+  <label class="ck"><input type="checkbox" id="fts"> message text</label>
+  <label class="ck"><input type="checkbox" id="arc"> archived</label>
+  <button id="reindex">Reindex</button>
+  <button id="undo">Undo last move</button>
+</header>
+<div id="list"><div class="empty">loading…</div></div>
+<div id="bar">
+  <span id="selinfo"></span>
+  <span id="selall"></span>
+  <span style="flex:1"></span>
+  <select id="dest"></select>
+  <button id="exportsel">Export as MD</button><button class="p" id="transfer">Transfer…</button>
+  <button id="clr">Clear</button>
+</div>
+</main></div>
+
+<div class="ov" id="ovread"><div class="dlg" id="reader">
+  <div class="dhead">
+    <div class="grow"><div class="dtitle" id="rtitle"></div><div class="dmeta" id="rmeta"></div></div>
+    <input type="search" id="rq" placeholder="Find in this chat…" style="width:150px">
+    <span class="find"><span class="dmeta" id="rcount" style="margin:0"></span>
+      <button id="rprev" title="Jump to the previous place this chat mentions your search">↑ Prev</button>
+      <button id="rnext" title="Jump to the next place this chat mentions your search">↓ Next</button></span>
+    <label class="ck"><input type="checkbox" id="rnoise" checked> hide tool noise</label>
+    <button id="rresume" title="Copies a command you paste into Terminal to continue this chat in Claude Code">Resume in Terminal</button><button id="rexport" title="Download this chat as a Markdown file">Export as MD</button><button id="rcopy">Copy</button><button id="rclose">Close</button>
+  </div>
+  <div class="dbody" id="rbody"></div>
+</div></div>
+
+<div class="ov" id="ovmove"><div class="dlg" id="movebox">
+  <div class="dhead"><div class="grow"><div class="dtitle">Transfer chats</div><div class="dmeta" id="mroute"></div></div></div>
+  <div class="dbody">
+    <div class="radios" style="margin-bottom:12px">
+      <div class="radio on" data-mode="copy"><strong>Copy</strong><small>keep in both accounts</small></div>
+      <div class="radio" data-mode="move"><strong>Move</strong><small>remove from source</small></div>
+    </div>
+    <div id="mplan"></div>
+  </div>
+  <div class="foot"><span class="grow" id="mnote"></span>
+    <button id="mcancel">Cancel</button><button class="p" id="mgo">Transfer</button></div>
+</div></div>
+
+<div class="ov" id="ovinfo"><div class="dlg" style="width:min(560px,100%)">
+  <div class="dhead"><div class="grow"><div class="dtitle" id="fititle"></div>
+    <div class="dmeta">where these chats live on this Mac</div></div>
+    <button id="ficlose">Close</button></div>
+  <div class="dbody" style="background:var(--bg)"><div id="fibody"></div></div></div></div>
+
+<div class="ov" id="ovmem"><div class="dlg" style="width:min(860px,100%);height:88vh">
+  <div class="dhead">
+    <div class="grow"><div class="dtitle" id="mtitle">What Claude remembers</div>
+      <div class="dmeta" id="msub">notes Claude wrote for itself while working with you</div></div>
+    <input type="search" id="mq" placeholder="Search memories…" style="width:190px">
+    <button id="mback" hidden>Back</button><button id="mclose">Close</button>
+  </div>
+  <div class="dbody" id="mbody" style="background:var(--bg)"></div></div></div>
+
+<div class="ov" id="ovmcp"><div class="dlg" style="width:min(940px,100%);height:86vh">
+  <div class="dhead"><div class="grow"><div class="dtitle">MCP connections</div>
+    <div class="dmeta" id="mcpsub">which servers each Claude can reach</div></div>
+    <input type="search" id="mcpq" placeholder="Search…" style="width:170px">
+    <button id="mcpclose">Close</button></div>
+  <div class="dbody" id="mcpbody" style="background:var(--bg)"></div></div></div>
+
+<div class="ov" id="ovcopy"><div class="dlg" style="width:min(700px,100%)">
+  <div class="dhead"><div class="grow"><div class="dtitle" id="cpTitle">Copy connector</div>
+    <div class="dmeta" id="cpFrom"></div></div><button id="cpClose">Close</button></div>
+  <div class="dbody" style="background:var(--bg)">
+    <div class="tabs">
+      <div class="tab on" data-c="here">To another Claude on this Mac</div>
+      <div class="tab" data-c="away">To another laptop</div>
+    </div>
+    <div id="cpHere">
+      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <label class="ck" style="color:var(--fg)">Copy into</label>
+        <select id="cpDest" style="flex:1;min-width:200px"></select>
+      </div>
+      <div id="cpPlan"></div>
+    </div>
+    <div id="cpAway" hidden></div>
+  </div>
+  <div class="foot"><span class="grow" id="cpNote"></span>
+    <button id="cpCancel">Cancel</button><button class="p" id="cpGo">Copy</button></div>
+</div></div>
+
+<div class="ov" id="ovbk"><div class="dlg" style="width:min(760px,100%);height:86vh">
+  <div class="dhead"><div class="grow"><div class="dtitle">Backup &amp; move to another Mac</div>
+    <div class="dmeta" id="bkSub"></div></div><button id="bkClose">Close</button></div>
+  <div class="dbody" style="background:var(--bg)">
+    <div class="tabs">
+      <div class="tab on" data-b="make">Make a backup</div>
+      <div class="tab" data-b="use">Restore one</div>
+    </div>
+    <div id="bkMake"></div>
+    <div id="bkUse" hidden></div>
+  </div></div></div>
+
+<div class="ov" id="ovset"><div class="dlg" style="width:min(760px,100%);height:86vh">
+  <div class="dhead"><div class="grow"><div class="dtitle">Claude Code settings</div>
+    <div class="dmeta" id="setFile"></div></div><button id="setClose">Close</button></div>
+  <div class="dbody" id="setBody" style="background:var(--bg)"></div></div></div>
+
+<div class="ov" id="ovuse"><div class="dlg" style="width:min(900px,100%);height:88vh">
+  <div class="dhead"><div class="grow"><div class="dtitle">Usage on this Mac</div>
+    <div class="dmeta" id="useSub"></div></div>
+    <select id="useView"><option value="days">by period</option><option value="windows">limit windows</option>
+      <option value="weeks">week by week</option><option value="compare">compare Macs</option></select>
+    <select id="useDays"><option value="7">last 7 days</option><option value="30" selected>last 30 days</option>
+      <option value="90">last 90 days</option><option value="365">last year</option></select>
+    <button id="useCsv">Export CSV</button><button id="useClose">Close</button></div>
+  <div class="dbody" id="useBody" style="background:var(--bg)"></div></div></div>
+
+<div class="ov" id="ovinst"><div class="dlg" style="width:min(760px,100%)">
+  <div class="dhead"><div class="grow"><div class="dtitle">Claude instances</div>
+    <div class="dmeta">each app has its own data folder, its own login and its own chats</div></div>
+    <button id="iclose">Close</button></div>
+  <div class="dbody" style="background:var(--bg)">
+    <div id="ilist"></div>
+    <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px">
+      <div style="font-weight:650;margin-bottom:8px">Add another instance</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="iname" placeholder="Claude Work 4" style="flex:1;min-width:200px">
+        <button class="p" id="icreate" disabled>Create…</button>
+      </div>
+      <div id="iplan" style="margin-top:10px"></div>
+    </div>
+  </div></div></div>
+
+<div id="toast"><span id="tmsg"></span><button id="tundo">Undo</button><button id="tx">Dismiss</button></div>
+
+<script>
+const T=new URLSearchParams(location.search).get('t');
+const api=(p,o={})=>fetch(p+(p.includes('?')?'&':'?')+'t='+T,o).then(r=>{
+  if(r.status===403){document.body.innerHTML='<div style="padding:40px;max-width:520px;font:15px/1.6 system-ui"><h2 style="margin:0 0 8px">This link has expired</h2>'+
+    'PowerTools was restarted with a new key. Open it again from <b>Claude PowerTools.app</b> or run <code>powertools</code> in a terminal, and use the link it prints.</div>';throw new Error('stale token')}
+  return r.json()});
+const $=id=>document.getElementById(id);
+const esc=s=>(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const when=ms=>ms?new Date(ms).toISOString().slice(0,10):'—';
+const short=u=>u?u.slice(0,8):'';
+let scope=null,rows=[],sel=new Set(),tree=[],matched=0,lastAnchor=null;
+let cur=null,msgs=[],chatFiles=[],shown=0,mode='copy',lastMove=null,vis=[],matches=[],curMatch=-1;
+
+/* ---------- sidebar ---------- */
+function bucketName(b){return b.label||('account '+short(b.account))}
+function drawTree(){
+  const el=$('tree');let h='',inst=null,tot=0;
+  for(const b of tree){
+    tot+=b.count;
+    if(b.instance!==inst){inst=b.instance;h+=`<div class="inst">${esc(inst)}</div>`}
+    h+=`<div class="b${scope===b.key?' on':''}" data-k="${esc(b.key)}" data-a="${esc(b.account)}">
+      <div class="t"><span class="nm">${esc(bucketName(b))}</span>
+        <span class="acts">
+          <button class="ico" data-act="info" title="Details and copy">i</button>
+          <button class="ico" data-act="rename" title="Rename">✎</button>
+        </span><span class="cnt">${b.count}</span></div>
+      <div class="s">${short(b.account)} · org ${short(b.org)}</div></div>`;
+  }
+  el.innerHTML=`<div class="b${scope?'':' on'}" data-k=""><div class="t"><span class="nm">All chats</span><span class="cnt">${tot}</span></div></div>`+h;
+  el.querySelectorAll('.b').forEach(n=>{
+    n.onclick=e=>{
+      const act=e.target.dataset&&e.target.dataset.act;
+      if(act){
+        e.stopPropagation();
+        const b=tree.find(x=>x.key===n.dataset.k);
+        if(act==='rename'){
+          const v=prompt('Name this account',b.label||'');
+          if(v!==null)api('/api/label',{method:'POST',headers:{'content-type':'application/json'},
+            body:JSON.stringify({uuid:b.account,label:v})}).then(boot);
+        } else showInfo(b);
+        return;
+      }
+      scope=n.dataset.k||null;sel.clear();drawTree();load();
+    };
+  });
+  $('dest').innerHTML=tree.map(b=>`<option value="${esc(b.key)}">→ ${esc(bucketName(b))} · ${esc(b.instance)}</option>`).join('');
+}
+
+/* ---------- table ---------- */
+function drawRows(){
+  const el=$('list');
+  if(!rows.length){el.innerHTML='<div class="empty">No chats match.</div>';return}
+  const allOn=rows.length&&rows.every(r=>sel.has(r.reg_path));
+  el.innerHTML=`<table><thead><tr>
+    <th class="cbx"><input type="checkbox" id="all" ${allOn?'checked':''}></th>
+    <th>Title</th><th>Account</th><th>Project</th><th>Date</th><th class="n">Msgs</th><th title="Models this chat actually ran on, by output. The app's own setting is shown faded when nothing has run yet.">Ran on</th></tr></thead><tbody>`+
+  rows.map((r,i)=>`<tr class="${sel.has(r.reg_path)?'sel':''}" data-i="${i}">
+    <td class="cbx"><input type="checkbox" ${sel.has(r.reg_path)?'checked':''}></td>
+    <td class="ttl">${esc(r.title)}
+      ${(r.snippets&&r.snippets.length)?`<div class="snip">${r.snippets.map(x=>
+        esc(x).replace(/&lt;&lt;/g,'<b>').replace(/&gt;&gt;/g,'</b>')).join(' ')}</div>`:''}</td>
+    <td class="meta">${esc(r.label||short(r.account))}</td>
+    <td class="meta">${esc((r.cwd||'').split('/').slice(-1)[0])}</td>
+    <td class="meta">${when(r.activity)}</td>
+    <td class="n">${r.msgs||0}</td>
+    <td class="meta">${(r.used&&r.used.length)
+        ? r.used.slice(0,2).map(u=>`<span title="${esc(shortModel(u.model))}: ${kfmt(u.output)} out, ${u.requests} replies">${esc(shortModel(u.model))}</span>`).join(' · ')+(r.used.length>2?` +${r.used.length-2}`:'')
+        : `<span style="opacity:.45" title="set in the app, nothing has run yet">${esc((r.model||'').replace('claude-',''))}</span>`}</td></tr>`).join('')+'</tbody></table>';
+  $('all').onclick=e=>{
+    if(e.target.checked)rows.forEach(r=>sel.add(r.reg_path));
+    else rows.forEach(r=>sel.delete(r.reg_path));
+    drawRows();drawBar();
+  };
+  el.querySelectorAll('tbody tr').forEach(tr=>{
+    const i=+tr.dataset.i,r=rows[i];
+    tr.querySelector('input').onclick=e=>{
+      e.stopPropagation();
+      if(e.shiftKey&&lastAnchor!==null){
+        const [a,b]=[Math.min(lastAnchor,i),Math.max(lastAnchor,i)];
+        const on=!sel.has(r.reg_path);
+        for(let k=a;k<=b;k++)on?sel.add(rows[k].reg_path):sel.delete(rows[k].reg_path);
+      } else {
+        sel.has(r.reg_path)?sel.delete(r.reg_path):sel.add(r.reg_path);
+      }
+      lastAnchor=i;drawRows();drawBar();
+    };
+    tr.querySelector('.ttl').onclick=()=>openChat(r);
+  });
+}
+
+function drawBar(){
+  $('bar').classList.toggle('on',sel.size>0);
+  $('selinfo').textContent=sel.size+' selected';
+  const more=matched>rows.length;
+  $('selall').innerHTML = more&&sel.size<matched
+    ? `<span class="link" id="sa">select all ${matched} matching</span>` : '';
+  if($('sa'))$('sa').onclick=async()=>{
+    const d=await api(qstr('&idsonly=1'));
+    d.ids.forEach(x=>sel.add(x));drawRows();drawBar();
+  };
+}
+
+function qstr(extra=''){
+  const q=$('q').value.trim();
+  return `/api/sessions?scope=${encodeURIComponent(scope||'')}&q=${encodeURIComponent(q)}`+
+    `&fts=${$('fts').checked?1:0}&archived=${$('arc').checked?1:0}`+extra;
+}
+
+async function load(){
+  const d=await api(qstr());
+  rows=d.rows;matched=d.matched;
+  window._bodyQuery=($('fts').checked&&$('q').value.trim())?$('q').value.trim():'';
+  window._ftsCount=d.fts_indexed;
+  $('tot').textContent=`${d.total} chats indexed`;
+  drawRows();drawBar();
+  if($('fts').checked&&!d.fts_indexed){
+    $('list').insertAdjacentHTML('afterbegin',
+      `<div class="hint">Message text is not indexed yet. Press <strong>Reindex</strong> once
+       (about 8 seconds) and searches will look inside every conversation.</div>`);
+  }
+}
+async function boot(){const d=await api('/api/tree');tree=d.buckets;drawTree();await load()}
+
+/* ---------- chat reader ---------- */
+const NOISE=new Set(['tool','result','thinking']);
+
+/* markdown -> html, always on ALREADY-ESCAPED text */
+function md(t){
+  const code=[];
+  t=t.replace(/```(\w*)\n?([\s\S]*?)```/g,(m,l,c)=>{code.push(c.replace(/\n$/,''));return `\u0000${code.length-1}\u0000`});
+  t=t.replace(/^######\s+(.*)$/gm,'<h3>$1</h3>').replace(/^#####\s+(.*)$/gm,'<h3>$1</h3>')
+     .replace(/^####\s+(.*)$/gm,'<h3>$1</h3>').replace(/^###\s+(.*)$/gm,'<h3>$1</h3>')
+     .replace(/^##\s+(.*)$/gm,'<h2>$1</h2>').replace(/^#\s+(.*)$/gm,'<h1>$1</h1>');
+  t=t.replace(/^\s*([-*_])\1{2,}\s*$/gm,'<hr>');
+  t=t.replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  t=t.replace(/\*\*([^*\n][^*]*?)\*\*/g,'<strong>$1</strong>');
+  t=t.replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,!?]|$)/g,'$1<em>$2</em>');
+  t=t.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  t=t.replace(/^&gt;\s?(.*)$/gm,'<blockquote>$1</blockquote>');
+  const out=[];let list=null;
+  const closeList=()=>{if(list){out.push(`</${list}>`);list=null}};
+  const cells=r=>r.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|').map(c=>c.trim());
+  const SEP=/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+  const lines=t.split('\n');
+  for(let i=0;i<lines.length;i++){
+    const raw=lines[i];
+    /* GitHub-style table: a header row, a dashed separator, then rows */
+    if(raw.includes('|') && i+1<lines.length && SEP.test(lines[i+1])
+       && cells(lines[i+1]).length===cells(raw).length && cells(raw).length>1){
+      closeList();
+      const head=cells(raw);
+      const align=cells(lines[i+1]).map(c=>
+        c.startsWith(':')&&c.endsWith(':')?'center':c.endsWith(':')?'right':'left');
+      const body=[];
+      i+=2;
+      while(i<lines.length && lines[i].includes('|') && lines[i].trim()){
+        body.push(cells(lines[i])); i++;
+      }
+      i--;
+      /* a key-value table often has an empty header row - don't draw an empty bar */
+      const blankHead=head.every(h=>!h.replace(/<[^>]*>/g,'').trim());
+      out.push(`<div class="tw"><table>`+
+        (blankHead?'':`<thead><tr>`+
+          head.map((h,k)=>`<th style="text-align:${align[k]||'left'}">${h}</th>`).join('')+
+          `</tr></thead>`)+
+        `<tbody>`+
+        body.map(r=>`<tr>`+head.map((_,k)=>
+          `<td style="text-align:${align[k]||'left'}">${r[k]===undefined?'':r[k]}</td>`).join('')+
+          `</tr>`).join('')+
+        `</tbody></table></div>`);
+      continue;
+    }
+    const ul=raw.match(/^\s*[-*+]\s+(.*)$/), ol=raw.match(/^\s*\d+[.)]\s+(.*)$/);
+    if(ul||ol){
+      const want=ul?'ul':'ol';
+      if(list!==want){if(list)out.push(`</${list}>`);out.push(`<${want}>`);list=want}
+      out.push(`<li>${(ul||ol)[1]}</li>`);continue;
+    }
+    closeList();
+    out.push(raw);
+  }
+  closeList();
+  t=out.join('\n');
+  t=t.split(/\n{2,}/).map(p=>{
+    const x=p.trim();
+    if(!x)return'';
+    return /^<(h[1-3]|ul|ol|pre|blockquote|hr|div class="tw")/.test(x)?x:`<p>${x.replace(/\n/g,'<br>')}</p>`;
+  }).join('');
+  return t.replace(/\u0000(\d+)\u0000/g,(m,i)=>`<pre><code>${code[i]}</code></pre>`);
+}
+
+/* a message survives the filters if any visible block matches */
+function keptBlocks(m){
+  const hide=$('rnoise').checked;
+  return m.blocks.filter(b=>!(hide&&NOISE.has(b.kind)));
+}
+function visible(){
+  return msgs.map(m=>({...m,blocks:keptBlocks(m)})).filter(m=>m.blocks.length);
+}
+/* which messages contain the search term, in order */
+const terms=()=>$('rq').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+function findMatches(){
+  const t=terms();
+  if(!t.length)return [];
+  const out=[];
+  vis.forEach((m,i)=>{
+    const text=m.blocks.map(b=>b.text||'').join('\n').toLowerCase();
+    if(t.every(w=>text.includes(w)))out.push(i);
+  });
+  return out;
+}
+function hl(t){
+  const ws=terms();
+  if(!ws.length)return t;
+  for(const w of ws){
+    t=t.replace(new RegExp('(?![^<]*>)'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),
+                m=>`<mark>${m}</mark>`);
+  }
+  return t;
+}
+function blockHtml(b){
+  if(b.kind==='text')  return `<div class="prose">${hl(md(esc(b.text)))}</div>`;
+  if(b.kind==='image') return `<img class="shot" alt="screenshot in this chat"
+      title="click to open full size"
+      src="/api/image?id=${encodeURIComponent(cur.cli_id)}&n=${b.idx}&t=${T}">`;
+  if(b.kind==='thinking')
+    return `<details class="step"><summary><span class="stepname">thinking</span></summary><pre>${hl(esc(b.text))}</pre></details>`;
+  if(b.kind==='tool')
+    return `<details class="step"><summary><span class="stepname">${esc(b.name)}</span></summary><pre>${hl(esc(b.text))}</pre></details>`;
+  return `<details class="step"><summary><span class="stepname">result</span></summary><pre>${hl(esc(b.text))}</pre></details>`;
+}
+function renderChunk(reset){
+  const body=$('rbody');
+  if(reset){
+    vis=visible();body.innerHTML='';shown=0;
+    if(chatFiles.length)body.insertAdjacentHTML('beforeend',
+      `<div class="files"><div class="hd">Files this chat pointed at</div>`+
+      chatFiles.map(f=>`<div class="row"><span>${f.kind==='pdf'?'PDF':'file'}</span>
+        <span><code>${esc(f.filename)}</code>
+        ${f.pages?` · ${f.pages} pages`:''}${f.size?` · ${(f.size/1e6).toFixed(1)} MB`:''}
+        ${f.exists?'':'<span class="gone">· no longer on disk</span>'}</span></div>`).join('')+
+      `<div class="dmeta" style="margin-top:6px">Only the path was saved, not the file itself.</div></div>`);
+  }
+  const v=vis;
+  if(!v.length){$('rcount').textContent='0 shown';body.innerHTML='<div class="empty">Nothing to show.</div>';return}
+  const next=v.slice(shown,shown+40);
+  body.insertAdjacentHTML('beforeend',next.map(m=>{
+    const stamp=`<div class="stamp">${esc((m.ts||'').slice(0,16).replace('T',' '))}</div>`;
+    const inner=m.blocks.map(blockHtml).join('');
+    return m.role==='user'
+      ? `<div class="turn user"><div class="bubble">${stamp}<div class="inner">${inner}</div></div></div>`
+      : `<div class="turn assistant">${stamp}${inner}</div>`;
+  }).join(''));
+  shown+=next.length;
+  clampLongMessages();
+  const q=$('rq').value.trim();
+  $('rcount').textContent=q
+    ? (matches.length?`match ${curMatch+1} of ${matches.length}`:'no matches in this chat')
+    : `${v.length} messages`;
+  $('rprev').hidden=$('rnext').hidden=!(q&&matches.length);
+}
+
+/* long messages collapse behind Show more, the way the Claude app does it */
+function clampLongMessages(){
+  document.querySelectorAll('.turn.user .bubble:not([data-clamped])').forEach(b=>{
+    b.dataset.clamped='1';
+    const inner=b.querySelector('.inner');
+    if(!inner||inner.scrollHeight<=260)return;
+    b.classList.add('clamped');
+    const btn=document.createElement('button');
+    btn.className='showmore';btn.textContent='Show more';
+    btn.onclick=()=>{
+      const open=b.classList.toggle('clamped');
+      btn.textContent=open?'Show more':'Show less';
+    };
+    b.appendChild(btn);
+  });
+}
+
+/* load the next chunk as the reader nears the end - no button to press */
+function ensureRendered(i){
+  let guard=0;
+  while(shown<=i && shown<vis.length && guard++<400)renderChunk(false);
+}
+function gotoMatch(step){
+  if(!matches.length)return;
+  curMatch=(curMatch+step+matches.length)%matches.length;
+  const target=matches[curMatch];
+  ensureRendered(target);
+  const turns=$('rbody').querySelectorAll('.turn');
+  const el=turns[target];
+  if(el){
+    turns.forEach(t=>t.classList.remove('curmatch'));
+    el.classList.add('curmatch');
+    el.scrollIntoView({block:'center'});
+  }
+  $('rcount').textContent=`match ${curMatch+1} of ${matches.length}`;
+  $('rprev').hidden=$('rnext').hidden=false;
+}
+function runFind(){
+  renderChunk(true);
+  matches=findMatches();curMatch=-1;
+  if(matches.length)gotoMatch(1);
+  else{$('rcount').textContent=$('rq').value.trim()?'no matches in this chat':`${vis.length} messages`;
+       $('rprev').hidden=$('rnext').hidden=true;}
+}
+
+function maybeMore(){
+  const p=$('rbody');
+  if(shown>=vis.length)return;
+  if(p.scrollTop+p.clientHeight >= p.scrollHeight-900){
+    renderChunk(false);
+    if(shown<vis.length&&p.scrollHeight<=p.clientHeight)maybeMore();
+  }
+}
+async function openChat(r){
+  cur=r;$('ovread').classList.add('on');
+  $('rtitle').textContent=r.title;$('rq').value='';
+  $('rmeta').textContent='loading…';
+  $('rbody').innerHTML='<div class="empty">loading transcript…</div>';
+  const d=await api('/api/session?id='+encodeURIComponent(r.cli_id));
+  msgs=d.messages;chatFiles=d.files||[];
+  const used=(d.used||[]).map(u=>`${shortModel(u.model)} ${kfmt(u.output)}`).join(' · ');
+  $('rmeta').textContent=`${msgs.length} messages · ${when(r.activity)} · ${r.cwd||''}`;
+  $('rmeta').title=used?'output tokens by model: '+used:'';
+  if($('rmodels'))$('rmodels').remove();
+  if(used)$('rmeta').insertAdjacentHTML('afterend',
+    `<div class="dmeta" id="rmodels" style="margin-top:2px">ran on: `+
+    (d.used||[]).map(u=>`<span title="${u.requests} replies · ${kfmt(u.input)} in · ${u.first} to ${u.last}">${esc(shortModel(u.model))} <b>${kfmt(u.output)}</b></span>`).join(' · ')+`</div>`);
+  if(!msgs.length){$('rbody').innerHTML='<div class="empty">No transcript file on disk for this chat.</div>';return}
+  matches=[];curMatch=-1;
+  $('rq').value=window._bodyQuery||'';
+  renderChunk(true);
+  $('rbody').onscroll=maybeMore;
+  if($('rq').value.trim())runFind(); else maybeMore();
+}
+
+/* ---------- transfer ---------- */
+function destBucket(){return tree.find(b=>b.key===$('dest').value)}
+async function openMove(){
+  const d=destBucket();
+  $('mroute').textContent=`${sel.size} chat(s)  →  ${bucketName(d)} · ${d.instance}`;
+  $('ovmove').classList.add('on');
+  $('mplan').innerHTML='<div class="empty">checking…</div>';
+  const p=await api('/api/move',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({ids:[...sel],dest:$('dest').value,mode,dry:true})});
+  const ow=p.steps.filter(s=>s.overwrite).length;
+  $('mplan').innerHTML=(p.steps.length?
+    `<div class="plan">`+p.steps.map(s=>`<div>${s.overwrite?'<span class="badge">overwrites</span>':''}<span>${esc(s.title)}</span></div>`).join('')+`</div>`
+    :'<div class="warn">Nothing to transfer.</div>')+
+    (p.skipped.length?`<div class="dmeta">${p.skipped.length} skipped (already there or missing)</div>`:'');
+  $('mnote').innerHTML=(ow?`<strong>${ow} will overwrite a chat already there.</strong> `:'')+
+    (mode==='move'?'Originals leave the source account. ':'')+
+    'A copy of both sides is saved first. To reverse it, press <strong>Undo last move</strong> '+
+    'at the top of the window (or run <code>powertools undo</code>). Only the most recent transfer '+
+    'can be reversed this way.';
+  $('mgo').disabled=!p.steps.length;
+  $('mgo').textContent=mode==='move'?`Move ${p.steps.length}`:`Copy ${p.steps.length}`;
+}
+async function runMove(){
+  $('mgo').disabled=true;$('mgo').textContent='Working…';
+  const r=await api('/api/move',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({ids:[...sel],dest:$('dest').value,mode,dry:false})});
+  lastMove=r;$('ovmove').classList.remove('on');sel.clear();
+  toast(`${r.moved} chat(s) transferred. Quit Claude (Cmd+Q) and reopen to see them. Backup: ${r.backup}`);
+  boot();
+}
+function toast(m){$('tmsg').textContent=m;$('toast').classList.add('on')}
+
+/* ---------- wiring ---------- */
+$('q').oninput=()=>{clearTimeout(window._t);window._t=setTimeout(load,220)};
+$('fts').onchange=load;$('arc').onchange=load;
+$('clr').onclick=()=>{sel.clear();drawRows();drawBar()};
+$('transfer').onclick=openMove;
+$('mcancel').onclick=()=>$('ovmove').classList.remove('on');
+$('mgo').onclick=runMove;
+document.querySelectorAll('.radio').forEach(n=>n.onclick=()=>{
+  document.querySelectorAll('.radio').forEach(x=>x.classList.remove('on'));
+  n.classList.add('on');mode=n.dataset.mode;openMove();
+});
+$('rclose').onclick=()=>$('ovread').classList.remove('on');
+$('rbody').addEventListener('click',e=>{
+  if(e.target.classList.contains('shot'))window.open(e.target.src,'_blank');
+});
+$('rq').oninput=()=>{clearTimeout(window._f);window._f=setTimeout(runFind,250)};
+$('rnoise').onchange=runFind;
+$('rnext').onclick=()=>gotoMatch(1);
+$('rprev').onclick=()=>gotoMatch(-1);
+$('rq').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();gotoMatch(e.shiftKey?-1:1)}};
+$('rcopy').onclick=()=>{
+  navigator.clipboard.writeText(visible().map(m=>`### ${m.role}\n`+m.blocks.map(b=>b.kind==='text'?b.text:`[${b.name||b.kind}]\n${b.text}`).join('\n')).join('\n\n'));
+  $('rcopy').textContent='Copied';setTimeout(()=>$('rcopy').textContent='Copy',1200);
+};
+$('tx').onclick=()=>$('toast').classList.remove('on');
+$('tundo').onclick=async()=>{const r=await api('/api/undo',{method:'POST'});
+  $('toast').classList.remove('on');alert(r.msg);boot()};
+$('reindex').onclick=async e=>{const b=e.target;b.disabled=true;b.textContent='Indexing…';
+  await api('/api/reindex?fts='+($('fts').checked?1:0),{method:'POST'});
+  b.disabled=false;b.textContent='Reindex';boot()};
+$('undo').onclick=async()=>{
+  if(!confirm('Reverse the last transfer?\n\nChats that were copied get removed again, chats that were moved go back to the account they came from, and anything that was overwritten is restored.'))return;
+  const r=await api('/api/undo',{method:'POST'});
+  alert(r.msg+(r.ok?'\n\nQuit Claude (Cmd+Q) and reopen to see the change.':''));boot()};
+document.querySelectorAll('.ov').forEach(o=>o.onclick=e=>{if(e.target===o)o.classList.remove('on')});
+document.onkeydown=e=>{
+  if(e.key==='Escape')document.querySelectorAll('.ov.on').forEach(o=>o.classList.remove('on'));
+  if(e.key==='/'&&e.target.tagName!=='INPUT'){e.preventDefault();$('q').focus()}
+  if((e.metaKey||e.ctrlKey)&&e.key==='a'&&e.target.tagName!=='INPUT'&&rows.length){
+    e.preventDefault();rows.forEach(r=>sel.add(r.reg_path));drawRows();drawBar();
+  }
+};
+
+/* ---------- what Claude remembers ---------- */
+let mem={items:[],index:null};
+async function loadMemory(){
+  $('mbody').innerHTML='<div class="empty">reading…</div>';
+  mem=await api('/api/memory');
+  drawMemory();
+}
+function drawMemory(){
+  $('mback').hidden=true;
+  $('mtitle').textContent='What Claude remembers';
+  const q=$('mq').value.trim().toLowerCase();
+  let items=mem.items;
+  if(q)items=items.filter(i=>(i.name+' '+i.description+' '+i.body).toLowerCase().includes(q));
+  $('msub').textContent=`${items.length} of ${mem.items.length} notes Claude wrote for itself`;
+  const by={};items.forEach(i=>{(by[i.type]=by[i.type]||[]).push(i)});
+  const order=['user','feedback','project','reference','note'];
+  const keys=Object.keys(by).sort((a,b)=>order.indexOf(a)-order.indexOf(b));
+  $('mbody').innerHTML=items.length?keys.map(k=>
+    `<div class="mgroup">${esc(k)} (${by[k].length})</div>`+
+    by[k].map(i=>`<div class="mrow" data-n="${esc(i.name)}">
+      <div class="mn">${esc(i.name)}${i.session?'<span class="tag">from a chat</span>':''}</div>
+      <div class="md">${esc(i.description||i.body.slice(0,120))}</div></div>`).join('')
+  ).join(''):'<div class="empty">Nothing matches.</div>';
+  $('mbody').querySelectorAll('.mrow').forEach(r=>r.onclick=()=>showMemory(r.dataset.n));
+}
+function showMemory(name){
+  const i=mem.items.find(x=>x.name===name);
+  if(!i)return;
+  $('mback').hidden=false;
+  $('mtitle').textContent=i.name;
+  $('msub').textContent=`${i.type} · ${i.project} · ${(i.modified||'').slice(0,10)}`;
+  const chat=i.session?rows.find(r=>r.cli_id===i.session):null;
+  $('mbody').innerHTML=
+    (i.description?`<div class="warn">${esc(i.description)}</div>`:'')+
+    `<div class="prose">${md(esc(i.body))}</div>`+
+    (i.links.length?`<div style="margin-top:14px"><div class="mgroup">related notes</div>`+
+      i.links.map(l=>i.dangling.includes(l)
+        ? `<span class="chip dead" title="no note by that name yet">${esc(l)}</span>`
+        : `<span class="chip" data-l="${esc(l)}">${esc(l)}</span>`).join('')+`</div>`:'')+
+    `<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+       <button id="mcopy">Copy note</button>
+       ${i.session?`<button id="mchat">Open the chat this came from</button>`:''}
+     </div>
+     <div class="dmeta" style="margin-top:10px">file: <code>${esc(i.file)}</code></div>`;
+  $('mbody').querySelectorAll('.chip[data-l]').forEach(c=>c.onclick=()=>showMemory(c.dataset.l));
+  $('mcopy').onclick=()=>{navigator.clipboard.writeText(i.body);
+    $('mcopy').textContent='Copied';setTimeout(()=>$('mcopy').textContent='Copy note',1200)};
+  if($('mchat'))$('mchat').onclick=async()=>{
+    let r=rows.find(x=>x.cli_id===i.session);
+    if(!r){const d=await api(`/api/sessions?q=&limit=100000`);r=d.rows.find(x=>x.cli_id===i.session)}
+    if(!r)return alert('That chat is no longer registered with any account.');
+    $('ovmem').classList.remove('on');openChat(r);
+  };
+}
+$('membtn').onclick=()=>{$('ovmem').classList.add('on');$('mq').value='';loadMemory()};
+$('mclose').onclick=()=>$('ovmem').classList.remove('on');
+$('mback').onclick=drawMemory;
+$('mq').oninput=()=>{clearTimeout(window._m);window._m=setTimeout(drawMemory,220)};
+
+/* ---------- usage ---------- */
+const kfmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?Math.round(n/1e3)+'k':String(n);
+const shortModel=m=>(m||'').replace('claude-','').replace(/-\d{8}$/,'');
+const resetPrefs=()=>({wd:localStorage.getItem('pt_reset_wd')||'3',at:localStorage.getItem('pt_reset_at')||'22:30'});
+const dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function colorFor(list){window.color=m=>['var(--acc)','#6a8fd8','#7fb069','#c98bd8','#d8b36a','#8ab4b8','#b88a7a','#999'][list.indexOf(m)%8]}
+
+async function accountBar(reload){
+  const r=await api('/api/resets');
+  let cur=localStorage.getItem('pt_scope');
+  if(cur===null){const first=r.options.find(o=>o.kind==='instance'&&o.account===r.signed_in);cur=first?first.value:''}
+  const opt=r.options.find(o=>o.value===cur);
+  const acctKey=opt?opt.account:'';
+  const rs=r.resets[acctKey]||{weekday:3,hhmm:'22:30'};
+  return {html:`<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <span class="cwhere">export for</span>
+      <select id="accSel" style="max-width:360px"><option value="" ${cur?'':'selected'}>everything on this Mac (not exportable)</option>
+        ${r.options.map(o=>`<option value="${esc(o.value)}" ${o.value===cur?'selected':''}>${esc(o.label)}</option>`).join('')}</select>
+      <span class="cwhere">its weekly limit resets</span>
+      <select id="rwd">${dayNames.map((n,i)=>`<option value="${i}" ${i===rs.weekday?'selected':''}>${n}</option>`).join('')}</select>
+      <input type="text" id="rat" value="${esc(rs.hhmm)}" style="width:70px"><button id="rsave">Apply</button>
+      <span class="cwhere" title="Each Claude subscription resets at its own moment. Read it off that app's limits panel. Apps signed into the same account share one reset.">?</span>
+      <span style="flex:1"></span><span id="accExtra"></span></div>`,
+    scope:cur, account:acctKey, reset:rs, exportable:!!cur,
+    wire:()=>{
+      $('accSel').onchange=()=>{localStorage.setItem('pt_scope',$('accSel').value);reload()};
+      $('rsave').onclick=async()=>{
+        const o=r.options.find(x=>x.value===$('accSel').value);
+        if(!o)return alert('Pick an app or account first. The reset belongs to an account.');
+        await api('/api/reset',{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({account:o.account,weekday:+$('rwd').value,hhmm:$('rat').value.trim()})});
+        reload();
+      };
+    }};
+}
+async function loadWeeks(){
+  $('useBody').innerHTML='<div class="empty">bucketing into weeks…</div>';
+  const bar=await accountBar(loadWeeks);
+  const d=await api(`/api/usage_history?weeks=8&scope=${encodeURIComponent(bar.scope)}`);
+  const allModels=[...new Set(d.weeks.flatMap(w=>Object.keys(w.models)))];colorFor(allModels);
+  const wd=d.reset.weekday, at=d.reset.hhmm;
+  $('useSub').textContent=`${d.scope.label} · weeks cut at the ${dayNames[wd]} ${at} reset · this Mac only`;
+  $('useBody').innerHTML=bar.html+
+    d.weeks.slice().reverse().map(w=>{
+      const models=Object.entries(w.models).sort((a,b)=>b[1].output-a[1].output);
+      const tot=models.reduce((a,[,v])=>a+v.output,0);
+      const fable=models.filter(([m])=>m.includes('fable')).reduce((a,[,v])=>a+v.output,0);
+      const maxDay=Math.max(1,...w.days.map(x=>Object.values(x.models).reduce((a,b)=>a+b,0)));
+      return `<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;background:var(--card)${w.current?';border-color:var(--acc)':''}">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
+          <strong>Week from ${esc(w.start.slice(0,16).replace('T',' '))}${w.current?' <span class="tag" style="border-color:var(--acc);color:var(--acc)">current</span>':''}</strong>
+          <span class="cwhere">${kfmt(tot)} output · Fable ${kfmt(fable)}</span></div>
+        ${models.length?`<div style="margin:8px 0 6px;display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px">`+
+          models.map(([m,v])=>`<span style="color:${color(m)}">${esc(shortModel(m))} <b>${kfmt(v.output)}</b> <span class="cwhere">${v.replies}×</span></span>`).join('')+`</div>
+          <div style="margin-top:6px">`+w.days.map(x=>{const t=Object.values(x.models).reduce((a,b)=>a+b,0);
+            return `<div class="barrow"><span class="cwhere">${esc(x.day.slice(5))} ${dayNames[(new Date(x.day+'T12:00').getDay()+6)%7]}</span>
+              <div style="display:flex;gap:1px;height:8px">${Object.entries(x.models).map(([m,v])=>`<div title="${esc(shortModel(m))}: ${kfmt(v)}" style="height:8px;background:${color(m)};width:${(v/maxDay*100).toFixed(1)}%;border-radius:2px"></div>`).join('')}</div>
+              <span class="num cwhere">${kfmt(t)}</span></div>`}).join('')+`</div>`
+         :'<div class="cwhere" style="margin-top:6px">nothing for this account on this Mac</div>'}
+      </div>`}).join('');
+  bar.wire();
+  $('accExtra').innerHTML=`<button class="p" id="useExport" ${bar.exportable?'':'disabled title="Pick an app or account first"'}>Export this Mac's usage</button>`;
+  $('useExport').onclick=async()=>{
+    const name=prompt('Your name, as it should appear in the combined table:',localStorage.getItem('pt_name')||'');
+    if(name===null)return; localStorage.setItem('pt_name',name);
+    window.open(`/api/usage_export?name=${encodeURIComponent(name)}&scope=${encodeURIComponent(bar.scope)}&t=${T}`,'_blank');
+  };
+}
+
+async function loadCompare(){
+  $('useSub').textContent='everyone exports from their own Mac, you combine them here';
+  $('useBody').innerHTML=
+    `<div class="warn" style="margin-bottom:12px;border-width:2px">
+       <div style="font-size:15px;font-weight:700;margin-bottom:6px">This counts Claude Code only.</div>
+       <div>✓ Claude Code in a terminal &nbsp;·&nbsp; ✓ the Code tab inside the Claude app</div>
+       <div>✗ Claude <em>chat</em>, on claude.ai or in the app's chat window. Those live on Anthropic's servers,
+         not on anyone's Mac, so no export can see them.</div>
+       <div style="margin-top:6px">Every file must be exported for the <strong>same shared account</strong>. A file for a
+         different account is set aside, not mixed in.</div></div>
+     <div class="dmeta" style="white-space:normal;margin-bottom:10px">Each person opens PowerTools on their Mac →
+       <strong>week by week</strong> → <strong>Export this Mac's usage</strong>, types their name, picks the shared account,
+       and sends you the JSON. Pick all the files here at the end of the week.</div>
+     <div class="mgroup">who is actually on this account</div>
+     <div class="dmeta" style="white-space:normal;margin-bottom:6px">You will forget who you lent it to. Anthropic does not.
+       Open <strong>claude.ai → Settings → Active sessions</strong>, select the whole table, copy, and paste it here.
+       Only <em>Claude Desktop</em> rows can be Claude Code, browser rows are chat and never reach any Mac.</div>
+     <textarea id="cmpSessions" placeholder="paste the Active sessions table here" style="width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font:12px ui-monospace,Menlo,monospace">${esc(localStorage.getItem('pt_sessions')||'')}</textarea>
+     <div id="cmpSessOut" style="margin:8px 0 12px"></div>
+     <div class="mgroup">the account meter, and what it is worth in tokens</div>
+     <div class="warn" style="margin-bottom:8px"><strong>This is an estimate, and it cannot be anything else.</strong>
+       The meter is the only place claude.ai chat shows up, and Anthropic never says how many tokens 100% is.
+       So: read the meter twice while <em>only your Mac</em> uses the account (overnight works), and PowerTools works out
+       tokens-per-percent from what your Mac spent in between. Fable is one model so its bar calibrates cleanly;
+       the all-models bar mixes model weights, so treat that one loosely.</div>
+     <div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 10px;align-items:center;font-size:12.5px;margin-bottom:8px">
+       <span></span><span class="cwhere">reading 1</span><span class="cwhere">reading 2</span>
+       <span>when</span><input type="datetime-local" id="c1t"><input type="datetime-local" id="c2t">
+       <span>Weekly · Fable %</span><input type="text" id="c1f" placeholder="e.g. 13" style="width:70px"><input type="text" id="c2f" placeholder="e.g. 14" style="width:70px">
+       <span>Weekly · all models %</span><input type="text" id="c1a" placeholder="e.g. 15" style="width:70px"><input type="text" id="c2a" placeholder="e.g. 16" style="width:70px">
+     </div>
+     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+       <button id="calGo">Calibrate from this Mac's usage between the readings</button>
+       <span id="calOut" class="cwhere"></span></div>
+     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+       <span class="cwhere">meter right now:</span>
+       <span>Fable %</span><input type="text" id="mF" style="width:60px" value="${esc(localStorage.getItem('pt_mF')||'')}">
+       <span>all models %</span><input type="text" id="mA" style="width:60px" value="${esc(localStorage.getItem('pt_mA')||'')}">
+       <span class="cwhere">from the app's limits panel, this week</span></div>
+     <button class="p" id="cmpPick">Choose everyone's exports…</button>
+     <div id="cmpOut" style="margin-top:14px"></div>`;
+  $('cmpSessions').oninput=()=>{localStorage.setItem('pt_sessions',$('cmpSessions').value);drawSessions()};
+  drawSessions();
+  const cal=JSON.parse(localStorage.getItem('pt_cal')||'{}');
+  if(cal.tokPerPctFable||cal.tokPerPctAll)$('calOut').textContent=`calibrated: 1% Fable ≈ ${cal.tokPerPctFable?kfmt(cal.tokPerPctFable):'?'} output tokens · 1% all ≈ ${cal.tokPerPctAll?kfmt(cal.tokPerPctAll):'?'}`;
+  ['c1t','c2t','c1f','c2f','c1a','c2a'].forEach(id=>{if(cal[id])$(id).value=cal[id]});
+  $('mF').oninput=()=>localStorage.setItem('pt_mF',$('mF').value); $('mA').oninput=()=>localStorage.setItem('pt_mA',$('mA').value);
+  $('calGo').onclick=async()=>{
+    const v=id=>$(id).value.trim();
+    if(!v('c1t')||!v('c2t'))return alert('Both reading times are needed.');
+    const scope=localStorage.getItem('pt_scope')||'';
+    const r=await api(`/api/usage_between?scope=${encodeURIComponent(scope)}&from=${encodeURIComponent(v('c1t'))}&to=${encodeURIComponent(v('c2t'))}`);
+    const dF=parseFloat(v('c2f'))-parseFloat(v('c1f')), dA=parseFloat(v('c2a'))-parseFloat(v('c1a'));
+    const out={c1t:v('c1t'),c2t:v('c2t'),c1f:v('c1f'),c2f:v('c2f'),c1a:v('c1a'),c2a:v('c2a')};
+    if(dF>0&&r.fable.output>0)out.tokPerPctFable=Math.round(r.fable.output/dF);
+    if(dA>0&&r.all.output>0)out.tokPerPctAll=Math.round(r.all.output/dA);
+    localStorage.setItem('pt_cal',JSON.stringify(out));
+    $('calOut').textContent=(out.tokPerPctFable||out.tokPerPctAll)
+      ?`between readings this Mac spent Fable ${kfmt(r.fable.output)} / all ${kfmt(r.all.output)} → 1% Fable ≈ ${out.tokPerPctFable?kfmt(out.tokPerPctFable):'?'} · 1% all ≈ ${out.tokPerPctAll?kfmt(out.tokPerPctAll):'?'}`
+      :`the meter did not move (Fable ${dF||0}%, all ${dA||0}%) or this Mac spent nothing in between - try a longer gap`;
+  };
+  $('cmpPick').onclick=async()=>{
+    const p=await api('/api/pick_many');
+    if(!p.ok||!p.paths.length)return;
+    renderCombined(p.paths);
+  };
+}
+/* the Active sessions table, pasted. rows carry device, location, created, last-updated */
+function parseSessions(text){
+  const DATE=/([A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M)/g;
+  const rows=[]; let buf='';
+  for(const raw of text.split(/\n/)){
+    const line=raw.trim(); if(!line||/^(Device|Location|Created|Updated|Active sessions|Showing)/i.test(line))continue;
+    buf+=(buf?' ':'')+line;
+    const dates=[...buf.matchAll(DATE)].map(m=>m[1]);
+    if(dates.length>=2){
+      const head=buf.slice(0,buf.indexOf(dates[0])).trim();
+      const m=head.match(/^(.*?\))\s*(Current)?\s*(.*)$/);
+      rows.push({device:(m?m[1]:head).trim(), current:/Current/.test(head), location:(m?m[3]:'').trim(),
+                 created:new Date(dates[0]), updated:new Date(dates[1])});
+      buf='';
+    }
+  }
+  return rows;
+}
+window.__sessions=[];
+function drawSessions(){
+  const rows=parseSessions($('cmpSessions').value||''); window.__sessions=rows;
+  if(!rows.length){$('cmpSessOut').innerHTML='';return}
+  const desktop=rows.filter(r=>/Claude Desktop/i.test(r.device));
+  const weekAgo=Date.now()-7*864e5;
+  const active=desktop.filter(r=>r.updated.getTime()>weekAgo);
+  // sessions are login tokens, not people: one Mac with two Claude apps and a re-login is three rows.
+  // rows from one place created within a day of each other are almost certainly one machine.
+  const groups=[];
+  active.slice().sort((a,b)=>a.created-b.created).forEach(r=>{
+    const g=groups.find(x=>x.location===r.location&&Math.abs(x.created-r.created)<864e5);
+    if(g){g.n++}else groups.push({location:r.location,created:r.created,n:1});
+  });
+  const places=new Set(active.map(r=>r.location)).size;
+  window.__expectedFiles=groups.length;
+  $('cmpSessOut').innerHTML=
+    `<div class="warn"><strong>${rows.length} sessions</strong> on the account, but a session is a login, not a person.
+     One Mac with two Claude apps, a browser tab and a re-login is four or five rows on its own.<br>
+     ${desktop.length} rows are Claude Desktop · ${active.length} active this week · from <strong>${places} location${places===1?'':'s'}</strong>.
+     <div style="margin-top:6px">Rough machine count: <strong>${groups.length}</strong>
+       <span class="cwhere">(sessions from one place set up within a day of each other counted as one machine; between ${places} and ${active.length} is possible)</span>.
+       Expect about <strong>${groups.length}</strong> export file${groups.length===1?'':'s'}.</div>
+     <div class="dmeta" style="white-space:normal;margin-top:6px">Location is the sign-in IP's city, so a VPN moves it. Clean this up once:
+       log out every session from that page, then sign back in only where you mean to. From then on, each new row is one deliberate grant.</div></div>
+     <table class="conn"><thead><tr><th>Device</th><th>Location</th><th>Created</th><th>Last active</th><th></th></tr></thead><tbody>`+
+    rows.map(r=>`<tr style="${/Claude Desktop/i.test(r.device)?'':'opacity:.45'}"><td>${esc(r.device)}${r.current?' <span class="tag">this Mac</span>':''}</td>
+      <td><span class="cwhere">${esc(r.location)}</span></td>
+      <td><span class="cwhere">${r.created.toLocaleDateString()}</span></td>
+      <td><span class="cwhere">${r.updated.toLocaleString([],{dateStyle:'short',timeStyle:'short'})}</span></td>
+      <td><span class="cwhere">${/Claude Desktop/i.test(r.device)?(r.updated.getTime()>weekAgo?'active this week':'idle'):'browser chat, not countable'}</span></td></tr>`).join('')+
+    `</tbody></table>
+     <div class="dmeta" style="white-space:normal;margin-top:6px">Do not recognise one? Log it out from that same page. That is the fix for the one-day lends you forgot.</div>`;
+}
+async function renderCombined(paths){
+  $('cmpOut').innerHTML='<div class="empty">combining…</div>';
+  const weekAgo=Date.now()-7*864e5;
+  const expected=window.__expectedFiles||0;
+  const r=await api('/api/usage_combine',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({files:paths,expected})});
+  if(!r.ok){$('cmpOut').innerHTML=`<div class="warn">${esc(r.msg)}</div>`;return}
+  $('cmpOut').innerHTML=
+    `<div class="warn" style="margin-bottom:10px">Shared account: <strong>${esc(r.account)}</strong> · ${r.people} file(s) received${r.expected?` · about ${r.expected} machine(s) used Claude Desktop this week`:''}
+       ${r.missing?`<div style="margin-top:6px;color:var(--warn)"><strong>About ${r.missing} machine${r.missing>1?'s':''} used the account this week and sent no file.</strong>
+         That estimate comes from the sessions table, so treat it as a lead, not a verdict. Their usage is real but invisible here, so the shares
+         below are split only among the ${r.people} who did. If the account meter is higher than these add up to, the gap is theirs.</div>`:''}
+       ${(!r.expected)?`<div class="dmeta" style="white-space:normal;margin-top:6px">Paste the Active sessions table above and this will tell you whether anyone is missing.</div>`:''}
+       <div class="dmeta" style="white-space:normal;margin-top:6px">Share = each person's slice of the total across the files you picked, for <strong>all models</strong> and for Fable separately, matching the two weekly bars in the app.</div></div>`+
+    (r.reset_mismatch?`<div class="warn" style="border-color:var(--warn);margin-bottom:10px"><strong>Reset times disagree, so the weeks will not line up:</strong>`+
+      Object.entries(r.reset_mismatch).map(([k,who])=>`<div>${esc(k.replace(/^(\d) /,(m,d)=>dayNames[+d]+' '))} — ${esc(who.join(', '))}</div>`).join('')+
+      `<div style="margin-top:4px">Everyone on one account should use the same reset. Ask them to re-export after setting it.</div></div>`:'')+
+    (r.rejected.length?`<div class="warn" style="border-color:var(--warn);margin-bottom:10px"><strong>Set aside, not counted:</strong>`+
+      r.rejected.map(x=>`<div>${esc(x.who||x.file.split('/').pop())} — ${esc(x.why)}</div>`).join('')+`</div>`:'')+
+    r.weeks.slice().reverse().map(w=>`<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;background:var(--card)${w.current?';border-color:var(--acc)':''}">
+      <strong>Week from ${esc(w.start.slice(0,16).replace('T',' '))}${w.current?' <span class="tag" style="border-color:var(--acc);color:var(--acc)">current</span>':''}</strong>
+      <table class="conn" style="margin-top:8px"><thead><tr><th>Who</th><th class="num">Fable</th><th class="num">Share</th><th class="num">All models</th><th class="num">Share</th></tr></thead><tbody>`+
+      w.rows.map(row=>`<tr><td><b>${esc(row.who)}</b><div class="cwhere">${row.instance?esc(row.instance)+' · ':''}${esc(row.machine||'')}${row.ips&&row.ips.length?' · '+esc(row.ips.join(', ')):''}${row.terminal===false?' · terminal sessions not counted':''}</div></td>
+        <td class="num">${kfmt(row.fable)}</td>
+        <td class="num"><div style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><div class="bar" style="width:${Math.max(2,row.fable_share)}px;max-width:80px"></div>${row.fable_share}%</div></td>
+        <td class="num">${kfmt(row.total)}</td><td class="num">${row.total_share}%</td></tr>`).join('')+
+      `</tbody></table></div>`+
+      (w.current?meterSplit(w):'')).join('');
+}
+function meterSplit(w){
+  const cal=JSON.parse(localStorage.getItem('pt_cal')||'{}');
+  const mF=parseFloat($('mF').value), mA=parseFloat($('mA').value);
+  const pal=['var(--acc)','#6a8fd8','#7fb069','#c98bd8','#d8b36a','#8ab4b8','#b88a7a'];
+  /* one bar per meter, drawn like the app's panel: the meter's % is the filled part,
+     split into a coloured piece per person, grey for whatever nobody's file explains */
+  const bar=(label,meterPct,tokPerPct,pick)=>{
+    if(!(meterPct>0))return `<div class="mrow" style="cursor:default"><div class="mn">${label}</div><div class="md">type this week's ${label.toLowerCase()} % from the app's panel above to draw it</div></div>`;
+    if(!tokPerPct)return `<div class="mrow" style="cursor:default"><div class="mn">${label} · meter ${meterPct}%</div><div class="md">calibrate once (above) and this bar splits by person</div></div>`;
+    const parts=w.rows.map((r,i)=>({who:r.who,pct:pick(r)/tokPerPct,color:pal[i%pal.length]}));
+    const known=parts.reduce((a,p)=>a+p.pct,0), rest=Math.max(0,meterPct-known), over=Math.max(0,known-meterPct);
+    const seg=(pct,color,title)=>`<div title="${esc(title)}" style="width:${(pct/Math.max(meterPct,known)*100).toFixed(2)}%;background:${color};height:100%"></div>`;
+    return `<div class="mrow" style="cursor:default">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+        <div class="mn">${label}</div><div class="cwhere">meter <b>${meterPct}%</b> of the weekly limit</div></div>
+      <div style="height:12px;border-radius:6px;background:var(--line);overflow:hidden;margin:8px 0 6px;display:flex;width:${Math.min(100,meterPct*2)}%;min-width:120px">`+
+        parts.map(p=>seg(p.pct,p.color,`${p.who}: ≈ ${p.pct.toFixed(1)}% of the limit (${(p.pct/meterPct*100).toFixed(0)}% of what was used)`)).join('')+
+        (rest>0.05?seg(rest,'rgba(128,128,128,.55)',`unaccounted: ≈ ${rest.toFixed(1)}% — claude.ai chat, Claude Design, someone who did not export, or calibration drift`):'')+
+      `</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px">`+
+        parts.map(p=>`<span title="${esc(p.who)}"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${p.color};margin-right:4px;vertical-align:middle"></span>${esc(p.who)} <b>≈${p.pct.toFixed(1)}%</b></span>`).join('')+
+        (rest>0.05?`<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:rgba(128,128,128,.55);margin-right:4px;vertical-align:middle"></span>unaccounted <b style="color:var(--warn)">≈${rest.toFixed(1)}%</b></span>`:'')+
+        (over>0.5?`<span class="cwhere">files add up to ${over.toFixed(1)}% more than the meter — calibration is off, re-do it</span>`:'')+
+      `</div></div>`;
+  };
+  return `<div class="warn" style="margin-top:10px;padding:12px 14px">
+    <div style="font-weight:700;margin-bottom:8px">This week, the account meter split by person <span class="cwhere" style="font-weight:400">(estimate · hover a bar segment)</span></div>`+
+    bar('Weekly · Fable',mF,cal.tokPerPctFable,r=>r.fable)+
+    bar('Weekly · all models',mA,cal.tokPerPctAll,r=>r.total)+
+    `<div class="dmeta" style="white-space:normal;margin-top:4px">Grey = the part of the meter no file explains. It is not proof against anyone.</div></div>`;
+}
+async function loadWindows(){
+  $('useBody').innerHTML='<div class="empty">checking the current windows…</div>';
+  const bar=await accountBar(loadWindows);
+  const d=await api(`/api/usage_windows?scope=${encodeURIComponent(bar.scope)}`);
+  const wd=d.reset.weekday, at=d.reset.hhmm;
+  $('useSub').textContent=`${d.now.replace('T',' ')} · ${d.scope.label} · same windows the Claude app meters`;
+  const card=(title,w,note)=>{
+    const models=Object.entries(w.models).sort((a,b)=>b[1].output-a[1].output);
+    const fable=models.filter(([m])=>m.includes('fable')).reduce((a,[,v])=>({replies:a.replies+v.replies,output:a.output+v.output}),{replies:0,output:0});
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--card)">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <strong style="font-size:14px">${title}</strong><span class="cwhere">since ${esc(w.since.slice(0,16).replace('T',' '))}</span></div>
+      <div class="dmeta" style="white-space:normal;margin:4px 0 10px">${note}</div>
+      <div class="warn" style="margin-bottom:10px"><strong>Fable from this Mac in this window: ${fable.replies} replies, ${kfmt(fable.output)} output tokens.</strong>
+        ${fable.replies?'':' Nothing. Whatever the account meter shows for Fable, it did not come from here.'}</div>
+      ${models.length?`<table class="conn"><thead><tr><th>Model</th><th class="num">Replies</th><th class="num">Output</th><th class="num">Input + cache</th></tr></thead><tbody>`+
+        models.map(([m,v])=>`<tr><td><b style="color:${color(m)}">${esc(shortModel(m))}</b></td><td class="num">${v.replies}</td><td class="num">${kfmt(v.output)}</td><td class="num">${kfmt(v.input)}</td></tr>`).join('')+
+        `</tbody></table>
+        <div class="mgroup">by Claude app</div>
+        <table class="conn"><tbody>`+Object.entries(w.apps).map(([app,ms])=>`<tr><td><b>${esc(app)}</b></td><td>`+
+          Object.entries(ms).sort((a,b)=>b[1].output-a[1].output).map(([m,v])=>`<span style="margin-right:12px;color:${color(m)}">${esc(shortModel(m))} <b>${kfmt(v.output)}</b> <span class="cwhere">${v.replies}×</span></span>`).join('')+`</td></tr>`).join('')+
+        `</tbody></table>
+        <div class="mgroup">chats in this window</div>
+        <table class="conn"><tbody>`+w.chats.map(ch=>`<tr><td>${esc(ch.title)}</td><td><span class="cwhere">${esc(ch.app)}</span></td><td>`+
+          Object.entries(ch.models).map(([m,v])=>`<span style="margin-right:10px;color:${color(m)}">${esc(shortModel(m))} ${kfmt(v.output)}</span>`).join('')+`</td></tr>`).join('')+`</tbody></table>`
+       :'<div class="empty" style="padding:14px">nothing for this account on this Mac in this window</div>'}
+    </div>`;
+  };
+  const allModels=[...new Set([...Object.keys(d.windows['5h'].models),...Object.keys(d.windows.week.models)])];colorFor(allModels);
+  $('useBody').innerHTML=
+    `<div class="warn" style="margin-bottom:14px">The Claude app shows the <em>whole account's</em> percentage. Anthropic does not
+      publish how many tokens 100% is, and the live percentage is fetched through your login and never stored on this Mac, so
+      it cannot be turned into "my share". What this Mac <em>did</em> use in the same windows is exact, and that is the evidence.</div>`+
+    bar.html+
+    card('Rolling 5-hour window', d.windows['5h'], 'What the app calls the 5-hour limit.')+
+    card('Weekly window', d.windows.week, `Since the last ${dayNames[wd]} ${esc(at)} reset for this account.`);
+  bar.wire();
+}
+async function loadUsage(){
+  const v=$('useView').value;
+  $('useDays').hidden=v!=='days';
+  if(v==='windows')return loadWindows();
+  if(v==='weeks')return loadWeeks();
+  if(v==='compare')return loadCompare();
+  $('useBody').innerHTML='<div class="empty">adding up…</div>';
+  const days=$('useDays').value;
+  const d=await api('/api/usage?days='+days);
+  const totOut=d.by_model.reduce((a,m)=>a+m.output,0)||1;
+  $('useSub').textContent=`${d.machine} · since ${d.since} · records go back to ${d.first_day||'?'}`;
+  // per-day, stacked by model as bars
+  const days_={};d.by_day.forEach(r=>{(days_[r.day]=days_[r.day]||{}).__t=(days_[r.day].__t||0)+r.output;days_[r.day][r.model]=r.output});
+  const dayKeys=Object.keys(days_).sort();const maxDay=Math.max(1,...dayKeys.map(k=>days_[k].__t));
+  const models=d.by_model.map(m=>m.model);
+  const palette=['var(--acc)','#6a8fd8','#7fb069','#c98bd8','#d8b36a','#8ab4b8','#b88a7a','#999'];
+  const color=m=>palette[models.indexOf(m)%palette.length];
+  $('useBody').innerHTML=
+   `<div class="mgroup">by model · ${$('useDays').selectedOptions[0].textContent} — output tokens are what Claude wrote back</div>
+    <table class="conn"><thead><tr><th>Model</th><th class="num">Replies</th><th class="num">Output</th>
+      <th class="num">Thinking</th><th class="num">Input + cache</th><th>Share</th></tr></thead><tbody>`+
+    d.by_model.map(m=>`<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${color(m.model)};margin-right:7px"></span><b>${esc(shortModel(m.model))}</b></td>
+      <td class="num">${m.requests}</td><td class="num">${kfmt(m.output)}</td><td class="num">${kfmt(m.thinking)}</td>
+      <td class="num">${kfmt(m.input+m.cache_create)}</td>
+      <td><div class="bar" title="${esc(shortModel(m.model))}: ${Math.round(m.output/totOut*100)}% of output" style="background:${color(m.model)};width:${Math.max(2,Math.round(m.output/totOut*100))}%"></div></td></tr>`).join('')+
+    `</tbody></table>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 2px;font-size:12px;color:var(--dim)">`+
+    models.map(m=>`<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${color(m)};margin-right:5px;vertical-align:middle"></span>${esc(shortModel(m))}</span>`).join('')+
+    `</div>
+    <div class="mgroup">by day</div>
+    <div style="border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--card)">`+
+    dayKeys.map(k=>`<div class="barrow"><span class="cwhere">${k.slice(5)}</span>
+      <div style="display:flex;gap:1px;height:8px">${models.filter(m=>days_[k][m]).map(m=>
+        `<div title="${esc(shortModel(m))}: ${kfmt(days_[k][m])}" style="height:8px;background:${color(m)};width:${(days_[k][m]/maxDay*100).toFixed(1)}%;border-radius:2px"></div>`).join('')}</div>
+      <span class="num cwhere">${kfmt(days_[k].__t)}</span></div>`).join('')+
+    `</div>
+    <div class="mgroup">by Claude app · ${$('useDays').selectedOptions[0].textContent}</div>
+    <div class="tw"><table class="conn"><thead><tr><th>Claude app</th>`+
+      (()=>{const shown=d.by_model.filter(m=>m.output>0).map(m=>m.model);window._pm=shown;
+        return shown.map(m=>`<th class="num" style="color:${color(m)};white-space:nowrap">${esc(shortModel(m))}</th>`).join('')})()+
+      `<th class="num">Total</th></tr></thead><tbody>`+
+    (()=>{const apps={};d.by_instance.forEach(r=>{(apps[r.app]=apps[r.app]||{})[r.model]=r.output});
+      return Object.keys(apps).sort((a,b)=>Object.values(apps[b]).reduce((x,y)=>x+y,0)-Object.values(apps[a]).reduce((x,y)=>x+y,0))
+        .map(app=>`<tr><td style="white-space:nowrap"><b>${esc(app)}</b></td>`+
+          window._pm.map(m=>`<td class="num" title="${esc(app)} · ${esc(shortModel(m))}">${apps[app][m]?kfmt(apps[app][m]):'<span style="opacity:.3">–</span>'}</td>`).join('')+
+          `<td class="num"><b>${kfmt(Object.values(apps[app]).reduce((x,y)=>x+y,0))}</b></td></tr>`).join('')})()+
+    `</tbody></table></div>
+    <div class="dmeta" style="margin:-6px 0 4px">Terminal only = Claude Code sessions started from a terminal that were never opened in any Claude app.</div>
+    <div class="mgroup">by account and Claude app · ${$('useDays').selectedOptions[0].textContent}</div>
+    <table class="conn"><thead><tr><th>Account</th><th>App</th><th>Model</th><th class="num">Replies</th><th class="num">Output</th></tr></thead><tbody>`+
+    d.by_account.map(r=>`<tr><td>${esc(r.label)}</td><td><span class="cwhere">${esc(r.instance||'—')}</span></td>
+      <td><span class="cwhere">${esc(shortModel(r.model))}</span></td><td class="num">${r.requests}</td><td class="num">${kfmt(r.output)}</td></tr>`).join('')+
+    `</tbody></table>
+    <div class="mgroup" style="display:flex;gap:10px;align-items:center">chats
+      <span class="tabs" style="margin:0"><span class="tab${window._chatSort!=='recent'?' on':''}" data-cs="used">most used</span>
+      <span class="tab${window._chatSort==='recent'?' on':''}" data-cs="recent">most recent</span></span></div>
+    <table class="conn"><thead><tr><th>Chat</th><th>App</th><th>Model</th><th>Last</th><th class="num">Replies</th><th class="num">Output</th></tr></thead><tbody>`+
+    (window._chatSort==='recent'?d.recent_chats:d.top_chats).map(t=>`<tr><td>${t.reg_path?`<span class="ttl" data-cli="${esc(t.cli_id)}">${esc(t.title)}</span>`:`<span class="cwhere">${esc(t.title)}</span>`}</td>
+      <td><span class="cwhere">${esc(t.app)}</span></td>
+      <td><span class="cwhere" style="color:${color(t.model)}">${esc(shortModel(t.model))}</span></td>
+      <td><span class="cwhere">${esc(t.last_day||'')}</span></td>
+      <td class="num">${t.requests}</td><td class="num">${kfmt(t.output)}</td></tr>`).join('')+
+    `</tbody></table>
+    <div class="warn" style="margin-top:12px">This counts Claude Code conversations stored on this Mac only.
+      Chats made on the claude.ai website or in the Claude app's own chat window are kept by Anthropic,
+      not here, so they do not appear. Other people's Macs are not visible from this one.</div>`;
+  $('useBody').querySelectorAll('[data-cs]').forEach(t=>t.onclick=()=>{window._chatSort=t.dataset.cs;loadUsage()});
+  $('useBody').querySelectorAll('.ttl[data-cli]').forEach(n=>n.onclick=async()=>{
+    let r=rows.find(x=>x.cli_id===n.dataset.cli);
+    if(!r){const dd=await api('/api/sessions?q=&limit=100000');r=dd.rows.find(x=>x.cli_id===n.dataset.cli)}
+    if(r){$('ovuse').classList.remove('on');openChat(r)}
+  });
+}
+$('usebtn').onclick=()=>{$('ovuse').classList.add('on');loadUsage()};
+$('useClose').onclick=()=>$('ovuse').classList.remove('on');
+$('useDays').onchange=loadUsage;
+$('useView').onchange=loadUsage;
+$('useCsv').onclick=()=>window.open(`/api/usage.csv?days=${$('useDays').value}&t=${T}`,'_blank');
+
+/* ---------- settings ---------- */
+async function loadSettings(){
+  $('setBody').innerHTML='<div class="empty">reading…</div>';
+  const d=await api('/api/settings');
+  $('setFile').textContent=d.file;
+  $('setBody').innerHTML=d.settings.map(s=>{
+    const shown=s.set?s.value:s.default;
+    const ctl=s.type==='bool'
+      ? `<label class="ck" style="color:var(--fg)"><input type="checkbox" data-k="${esc(s.key)}"
+          ${shown?'checked':''}> ${shown?'on':'off'}</label>`
+      : s.type==='number'
+        ? `<div style="display:flex;gap:6px;align-items:center">
+             <input type="text" data-n="${esc(s.key)}" value="${esc(String(shown))}" style="width:90px">
+             <span class="cwhere">${esc(s.unit||'')}</span>
+             <button data-save="${esc(s.key)}">Save</button></div>`
+        : `<span class="cwhere">${esc(String(shown))}</span>`;
+    return `<div style="border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+              margin-bottom:8px;background:var(--card)${s.risky?';border-color:var(--warn)':''}">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+        <div style="min-width:0">
+          <strong>${esc(s.title)}</strong>${s.risky?' <span class="tag off">careful</span>':''}
+          <div class="dmeta" style="margin-top:3px;white-space:normal">${esc(s.why)}</div>
+          ${s.set?'':'<div class="dmeta" style="margin-top:3px">not set, so Claude uses its default</div>'}
+        </div>
+        <div style="flex:0 0 auto">${ctl}</div>
+      </div></div>`;
+  }).join('')+
+  `<div class="warn">Changes land in <code>${esc(d.file)}</code>. A copy of the file is kept
+    before each change. New Claude Code sessions pick them up; one already running keeps
+    the old value.</div>`;
+  $('setBody').querySelectorAll('input[data-k]').forEach(c=>c.onchange=async e=>{
+    await saveSetting(e.target.dataset.k, e.target.checked);
+  });
+  $('setBody').querySelectorAll('button[data-save]').forEach(b=>b.onclick=async e=>{
+    const k=e.currentTarget.dataset.save;
+    await saveSetting(k, $('setBody').querySelector(`input[data-n="${CSS.escape(k)}"]`).value);
+  });
+}
+async function saveSetting(key,value){
+  const r=await api('/api/setting',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({key,value})});
+  toast(r.ok?`${key} is now ${r.now}. ${r.msg}`:('Not changed: '+r.msg));
+  loadSettings();
+}
+$('setbtn').onclick=()=>{$('ovset').classList.add('on');loadSettings()};
+$('setClose').onclick=()=>$('ovset').classList.remove('on');
+
+/* ---------- backup ---------- */
+let bk=null;
+const mb=b=>b>1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
+async function loadBackup(){
+  $('bkMake').innerHTML='<div class="empty">looking…</div>';
+  bk=await api('/api/backup_info');
+  $('bkSub').textContent='one zip carries your chats, memory and settings to a new Mac';
+  drawMake();drawUse();
+}
+function drawMake(){
+  const h=bk.here;
+  $('bkMake').innerHTML=
+    `<div class="mgroup">what is on this Mac</div>
+     <table class="conn"><tbody>
+      <tr><td>Chats</td><td style="text-align:right">${h.registrations}</td></tr>
+      <tr><td>Transcripts (the actual conversations)</td><td style="text-align:right">${h.transcripts} · ${mb(h.bytes)}</td></tr>
+      <tr><td>Memory notes</td><td style="text-align:right">${h.memories}</td></tr>
+      <tr><td>MCP servers</td><td style="text-align:right">${h.mcp}</td></tr>
+     </tbody></table>
+     <div class="mgroup">save it as</div>
+     <div style="display:flex;gap:8px;align-items:center">
+       <input type="text" id="bkOut" value="${esc(bk.default_out)}" style="flex:1;min-width:0" readonly>
+       <button id="bkPick">Choose folder…</button></div>
+     <label class="ck" style="margin:12px 0;color:var(--fg)">
+       <input type="checkbox" id="bkTr"> include transcripts (${mb(h.bytes)}, takes a while)</label>
+     <div class="warn">Without transcripts you get a small file with every chat's title,
+       account, memory and settings, but not the conversation text. For the full
+       ${mb(h.bytes)} version the terminal is steadier:
+       <code>powertools backup</code></div>
+     <button class="p" id="bkGo">Create backup</button>
+     <div id="bkResult" style="margin-top:12px"></div>`;
+  $('bkPick').onclick=async()=>{
+    const r=await api('/api/pick?kind=folder');
+    if(r.ok)$('bkOut').value=r.path.replace(/\/$/,'')+'/claude-powertools-backup.zip';
+  };
+  $('bkGo').onclick=async()=>{
+    const b=$('bkGo');b.disabled=true;b.textContent='Packing…';
+    const r=await api('/api/backup',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({out:$('bkOut').value.trim(),transcripts:$('bkTr').checked})});
+    b.disabled=false;b.textContent='Create backup';
+    $('bkResult').innerHTML=`<div class="warn">Done — ${mb(r.bytes)}<br><code>${esc(r.file)}</code>
+      <div style="margin-top:6px">Copy that file to the other Mac, install Claude PowerTools there,
+      then open this same panel and use <strong>Restore one</strong>.</div></div>`;
+    loadBackup();
+  };
+}
+function drawUse(){
+  const list=bk.found;
+  $('bkUse').innerHTML=
+    `<div class="mgroup">pick a backup</div>
+     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+       <input type="text" id="bkFile" placeholder="no file chosen" style="flex:1;min-width:0" readonly>
+       <button class="p" id="bkBrowse">Choose file…</button></div>`+
+    (list.length?`<div class="mgroup">or one already on this Mac</div>
+      <table class="conn"><tbody>`+list.map((f,i)=>
+      `<tr><td><b>${esc(f.file.split('/').pop())}</b>
+        <div class="cwhere">from ${esc(f.machine||'?')} · ${esc((f.made||'').slice(0,16).replace('T',' '))} · ${mb(f.bytes)}</div></td>
+      <td style="text-align:right"><button data-i="${i}">Use this</button></td></tr>`).join('')+
+      `</tbody></table>`:'')+
+    `<div id="bkLayout"></div>`;
+  $('bkBrowse').onclick=async()=>{
+    const r=await api('/api/pick?kind=file');
+    if(r.ok){$('bkFile').value=r.path;loadLayout()}
+  };
+  $('bkUse').querySelectorAll('button[data-i]').forEach(b=>b.onclick=()=>{
+    $('bkFile').value=list[+b.dataset.i].file;loadLayout()});
+}
+
+async function loadLayout(){
+  const f=$('bkFile').value.trim();
+  if(!f)return;
+  $('bkLayout').innerHTML='<div class="empty">reading the backup…</div>';
+  const d=await api('/api/backup_layout?file='+encodeURIComponent(f));
+  if(!d.ok){$('bkLayout').innerHTML=`<div class="warn">${esc(d.msg||'could not read that file')}</div>`;return}
+  const missing=d.rows.filter(r=>!r.instance_here);
+  $('bkLayout').innerHTML=
+    `<div class="mgroup">from ${esc(d.manifest.machine||'?')} · ${esc((d.manifest.made||'').slice(0,16).replace('T',' '))}</div>
+     <table class="conn"><thead><tr><th>Claude app in the backup</th><th>Account</th>
+       <th style="text-align:right">Chats</th><th>On this Mac</th></tr></thead><tbody>`+
+     d.rows.map(r=>`<tr><td><b>${esc(r.instance)}</b></td>
+       <td><span class="cwhere">${esc(r.account.slice(0,8))} · org ${esc(r.org.slice(0,8))}</span></td>
+       <td style="text-align:right">${r.chats}</td>
+       <td><span class="cwhere">${r.exact_here?'same place exists':(r.instance_here?'app exists, different account':'app not here')}</span></td></tr>`).join('')+
+     `</tbody></table>
+     <div class="mgroup">where should the chats land</div>
+     <div class="radios" style="flex-direction:column;gap:6px">
+       <div class="radio on" data-m="keep"><strong>Recreate the same layout</strong>
+         <small>each Claude app gets back the chats it had. Needs those apps to exist here first.</small></div>
+       <div class="radio" data-m="one"><strong>Put every chat into one Claude</strong>
+         <small>everything lands in a single account, whatever app it came from.</small></div>
+     </div>
+     <div id="bkInto" hidden style="margin-top:9px">
+       <select id="bkTarget" style="width:100%">${d.targets.map(t=>`<option>${esc(t)}</option>`).join('')}</select>
+     </div>`+
+     (missing.length?`<div class="warn" style="margin-top:10px">
+        ${missing.map(m=>esc(m.instance)).join(', ')} ${missing.length===1?'is':'are'} not on this Mac.
+        Either create ${missing.length===1?'it':'them'} first in <strong>Instances…</strong>
+        (same name), or choose <strong>one Claude</strong> above.</div>`:'')+
+     `<div class="mgroup">what to bring back</div>
+      <label class="ck" style="color:var(--fg)"><input type="checkbox" id="w_tr" checked> transcripts — safe, merges</label>
+      <label class="ck" style="color:var(--fg)"><input type="checkbox" id="w_mem" checked> memory notes — safe, merges</label>
+      <label class="ck" style="color:var(--fg)"><input type="checkbox" id="w_ch" checked> chat list — the chats themselves</label>
+      <label class="ck" style="color:var(--fg)"><input type="checkbox" id="w_cf"> MCP and Claude Code settings — replaces config files</label>
+      <div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">
+        <button id="bkPreview">Preview</button>
+        <button class="p" id="bkRestore" disabled>Restore</button></div>
+      <div id="bkOut2"></div>`;
+  let mode='keep';
+  $('bkLayout').querySelectorAll('.radio').forEach(r=>r.onclick=()=>{
+    $('bkLayout').querySelectorAll('.radio').forEach(x=>x.classList.remove('on'));
+    r.classList.add('on');mode=r.dataset.m;$('bkInto').hidden=mode!=='one';
+  });
+  const what=()=>[['w_tr','transcripts'],['w_mem','memory'],['w_ch','chats'],['w_cf','config']]
+    .filter(([id])=>$(id).checked).map(([,v])=>v);
+  const body=dry=>JSON.stringify({file:$('bkFile').value.trim(),what:what(),dry,
+    into:mode==='one'?$('bkTarget').value:null});
+  $('bkPreview').onclick=async()=>{
+    $('bkOut2').innerHTML='<div class="empty">checking…</div>';
+    const r=await api('/api/restore',{method:'POST',headers:{'content-type':'application/json'},body:body(true)});
+    if(!r.ok){$('bkOut2').innerHTML=`<div class="warn">${esc(r.msg)}</div>`;return}
+    $('bkOut2').innerHTML=`<div class="warn">Would write <strong>${r.planned}</strong> file(s).
+      <strong>${r.overwrites}</strong> already exist here and would be replaced, with a copy kept first.</div>`+
+      `<div class="plan">`+r.sample.map(x=>`<div><code>${esc(x)}</code></div>`).join('')+`</div>`;
+    $('bkRestore').disabled=r.planned===0;
+  };
+  $('bkRestore').onclick=async()=>{
+    if(!confirm('Restore now?\n\nThis writes into your live Claude data. Files it replaces are copied aside first.'))return;
+    const b=$('bkRestore');b.disabled=true;b.textContent='Restoring…';
+    const r=await api('/api/restore',{method:'POST',headers:{'content-type':'application/json'},body:body(false)});
+    b.textContent='Restore';
+    $('bkOut2').innerHTML=`<div class="warn">Wrote ${r.written} file(s).
+      Replaced files kept at <code>${esc(r.backup||'nothing needed keeping')}</code>.
+      <div style="margin-top:6px">Quit Claude fully (Cmd+Q) and reopen it.</div></div>`;
+  };
+}
+$('bkbtn').onclick=()=>{$('ovbk').classList.add('on');loadBackup()};
+$('bkClose').onclick=()=>$('ovbk').classList.remove('on');
+document.querySelectorAll('#ovbk .tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('#ovbk .tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  $('bkMake').hidden=t.dataset.b!=='make';$('bkUse').hidden=t.dataset.b!=='use';
+});
+
+/* ---------- mcp ---------- */
+const EYE='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYEOFF='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+let mcp={servers:[],instances:[]}, mcpTab='all';
+const initial=n=>(n.replace(/^.*\./,'')[0]||'?').toUpperCase();
+async function loadMcp(){
+  $('mcpbody').innerHTML='<div class="empty">reading…</div>';
+  mcp=await api('/api/mcp');
+  drawMcp();
+}
+function drawMcp(){
+  const q=$('mcpq').value.trim().toLowerCase();
+  let list=mcp.servers.filter(m=>!q||(m.name+m.scope+m.target).toLowerCase().includes(q));
+  if(mcpTab==='instance')list=list.filter(m=>!m.shared);
+  if(mcpTab==='shared')list=list.filter(m=>m.shared);
+  $('mcpsub').textContent=`${mcp.servers.length} servers · ${mcp.instances.length} Claude apps on this Mac`;
+  $('mcpbody').innerHTML=
+   `<div class="tabs">
+      <div class="tab${mcpTab==='all'?' on':''}" data-t="all">All</div>
+      <div class="tab${mcpTab==='instance'?' on':''}" data-t="instance">Per app</div>
+      <div class="tab${mcpTab==='shared'?' on':''}" data-t="shared">Shared</div>
+    </div>`+
+   (list.length?`<table class="conn"><thead><tr>
+      <th>Connector</th><th>Claude app</th><th>Type</th><th></th></tr></thead><tbody>`+
+    list.map(m=>`<tr data-id="${esc(m.id)}">
+      <td><div class="cname"><span class="avatar">${esc(initial(m.name))}</span>
+        <span><b>${esc(m.name)}</b>${m.enabled?'':'<span class="tag off">off</span>'}
+          ${m.target?`<div class="cwhere">${esc(m.target)}</div>`:''}
+          <div class="keys" data-for="${esc(m.id)}"></div></span></div></td>
+      <td><span class="cwhere">${esc(m.shared?'every app':m.scope)}</span></td>
+      <td><span class="cwhere">${esc(m.kind)}</span></td>
+      <td><div class="rowacts">
+        ${m.secrets.length?`<button class="ico" data-act="key" title="Show the stored value">${EYE}</button>`:''}
+        ${m.copyable?`<button data-act="copy">Copy to…</button>`:''}
+      </div></td></tr>`).join('')+`</tbody></table>`
+    :'<div class="empty">Nothing matches.</div>')+
+   `<div class="warn" style="margin-top:14px">Servers listed under an app name are configured in
+     that app alone. <strong>Shared</strong> ones come from Claude Code settings or a project file,
+     so every app sees them and there is nothing to copy. Keys stay hidden until you ask.</div>`;
+  $('mcpbody').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{mcpTab=t.dataset.t;drawMcp()});
+  $('mcpbody').querySelectorAll('[data-act="copy"]').forEach(b=>b.onclick=e=>{
+    copyMcpFlow(e.currentTarget.closest('tr').dataset.id)});
+  $('mcpbody').querySelectorAll('[data-act="key"]').forEach(b=>b.onclick=e=>{
+    revealKeys(e.currentTarget.closest('tr').dataset.id)});
+}
+async function revealKeys(id){
+  const m=mcp.servers.find(x=>x.id===id);
+  const box=$('mcpbody').querySelector(`.keys[data-for="${CSS.escape(id)}"]`);
+  const btn=$('mcpbody').querySelector(`tr[data-id="${CSS.escape(id)}"] [data-act="key"]`);
+  const setIcon=on=>{if(btn){btn.innerHTML=on?EYEOFF:EYE;
+    btn.title=on?'Hide the stored value':'Show the stored value'}};
+  if(box.dataset.open){box.innerHTML='';delete box.dataset.open;setIcon(false);return}
+  box.dataset.open='1';setIcon(true);box.innerHTML='<div class="keyrow">reading…</div>';
+  const parts=[];
+  for(const k of m.secrets){
+    const r=await api(`/api/mcp_reveal?id=${encodeURIComponent(id)}&key=${encodeURIComponent(k)}`);
+    parts.push(r.ok
+      ? `<div class="keyrow"><span>${esc(k)}</span><span class="keyval">${esc(r.value)}</span>
+         <span>${esc(r.note)}</span></div>`
+      : `<div class="keyrow">${esc(k)}: ${esc(r.msg)}</div>`);
+  }
+  box.innerHTML=parts.join('')+
+    '<div class="keyrow" style="color:var(--warn)">on screen now, careful sharing this window</div>';
+}
+let cpId=null;
+async function copyMcpFlow(id){
+  cpId=id;
+  const m=mcp.servers.find(x=>x.id===id);
+  const others=mcp.instances.filter(i=>i!==m.scope);
+  $('cpTitle').textContent='Copy '+m.name;
+  $('cpFrom').textContent=`currently set up in ${m.scope} · ${m.kind}`;
+  $('cpDest').innerHTML=others.map(o=>`<option>${esc(o)}</option>`).join('')
+    || '<option disabled>no other Claude app on this Mac</option>';
+  document.querySelectorAll('#ovcopy .tab').forEach(t=>t.classList.toggle('on',t.dataset.c==='here'));
+  $('cpHere').hidden=false;$('cpAway').hidden=true;$('cpGo').hidden=false;
+  $('ovcopy').classList.add('on');
+  planCopy();
+}
+async function planCopy(){
+  const to=$('cpDest').value;
+  if(!to){$('cpPlan').innerHTML='<div class="warn">There is only one Claude app on this Mac.</div>';
+    $('cpGo').disabled=true;return}
+  $('cpPlan').innerHTML='<div class="empty">checking…</div>';
+  const p=await api('/api/mcp_copy',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({id:cpId,to,dry:true})});
+  if(!p.ok){$('cpPlan').innerHTML=`<div class="warn">${esc(p.msg)}</div>`;$('cpGo').disabled=true;return}
+  $('cpPlan').innerHTML=
+    `<div class="mgroup">what gets written</div>`+
+    `<div class="plan">`+p.writes.map(w=>`<div><code>${esc(w[1])}</code></div>`).join('')+`</div>`+
+    (p.notes.length?`<div class="warn">`+p.notes.map(n=>`<div>${esc(n)}</div>`).join('')+`</div>`:'');
+  $('cpNote').textContent='The existing file is backed up first. Undo last move reverses it.';
+  $('cpGo').disabled=false;$('cpGo').textContent='Copy to '+to;
+}
+async function showAway(){
+  $('cpPlan').innerHTML='';$('cpGo').hidden=true;$('cpNote').textContent='';
+  $('cpAway').innerHTML='<div class="empty">building…</div>';
+  const reveal=window._cpReveal?1:0;
+  const d=await api(`/api/mcp_snippet?id=${encodeURIComponent(cpId)}&reveal=${reveal}`);
+  if(!d.ok){$('cpAway').innerHTML=`<div class="warn">${esc(d.msg)}</div>`;return}
+  $('cpAway').innerHTML=
+    `<div class="mgroup">steps on the other laptop</div>`+
+    `<ol style="margin:0 0 12px;padding-left:20px;font-size:13.5px;line-height:1.6">`+
+      d.steps.map(x=>`<li>${esc(x)}</li>`).join('')+`</ol>`+
+    (d.kind!=='extension'?`<div class="mgroup">file to edit there</div>
+      <div class="plan"><div><code>${esc(d.target)}</code></div></div>`:'')+
+    `<div class="mgroup">paste this${d.has_secrets?' — secrets are blanked out':''}</div>`+
+    `<div class="tw"><pre style="margin:0;padding:11px 13px;white-space:pre-wrap;word-break:break-word;
+      font:12px/1.55 ui-monospace,Menlo,monospace">${esc(d.snippet)}</pre></div>`+
+    `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+       <button id="cpCopySnip">Copy to clipboard</button>
+       ${d.has_secrets?`<button id="cpReveal">${window._cpReveal?'Hide real values':'Show real values'}</button>`:''}
+     </div>`;
+  $('cpCopySnip').onclick=()=>{navigator.clipboard.writeText(d.snippet);
+    $('cpCopySnip').textContent='Copied';setTimeout(()=>$('cpCopySnip').textContent='Copy to clipboard',1300)};
+  if($('cpReveal'))$('cpReveal').onclick=()=>{window._cpReveal=!window._cpReveal;showAway()};
+}
+async function runMcpCopy(){
+  const to=$('cpDest').value;
+  const m=mcp.servers.find(x=>x.id===cpId);
+  if(!confirm(`Copy ${m.name} from ${m.scope} to ${to}?`))return;
+  $('cpGo').disabled=true;$('cpGo').textContent='Copying…';
+  const r=await api('/api/mcp_copy',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({id:cpId,to,dry:false})});
+  $('ovcopy').classList.remove('on');
+  toast(r.ok?r.msg:('Failed: '+r.msg));
+  loadMcp();
+}
+$('cpClose').onclick=$('cpCancel').onclick=()=>$('ovcopy').classList.remove('on');
+$('cpDest').onchange=planCopy;
+$('cpGo').onclick=runMcpCopy;
+document.querySelectorAll('#ovcopy .tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('#ovcopy .tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  const here=t.dataset.c==='here';
+  $('cpHere').hidden=!here;$('cpAway').hidden=here;
+  if(here){$('cpGo').hidden=false;planCopy()}else showAway();
+});
+$('mcpbtn').onclick=()=>{$('ovmcp').classList.add('on');$('mcpq').value='';loadMcp()};
+$('mcpclose').onclick=()=>$('ovmcp').classList.remove('on');
+$('mcpq').oninput=()=>{clearTimeout(window._mc);window._mc=setTimeout(drawMcp,200)};
+
+/* ---------- account info ---------- */
+function showInfo(b){
+  const email=(b.label||'').includes('@')?b.label:null;
+  $('fititle').textContent=b.label||('account '+short(b.account));
+  $('fibody').innerHTML=`
+    <dl class="kv">
+      <dt>Email</dt><dd>${b.who?esc(b.who.email):(email?esc(email):'not known to this Mac')}</dd>
+      ${b.who&&b.who.name?`<dt>Name</dt><dd>${esc(b.who.name)}</dd>`:''}
+      ${b.who&&b.who.plan?`<dt>Plan</dt><dd>${esc(b.who.plan)}</dd>`:''}
+      <dt>Account id</dt><dd>${esc(b.account)}</dd>
+      <dt>Org id</dt><dd>${esc(b.org)}</dd>
+      <dt>Claude app</dt><dd>${esc(b.instance)}</dd>
+      <dt>Chats here</dt><dd>${b.count}</dd>
+      <dt>Folder</dt><dd>${esc(b.path||'')}</dd>
+    </dl>
+    <div class="warn">
+      <div><strong>Account id</strong> is the Claude login these chats belong to. Claude stores
+      no email address on this Mac, only this id, which is why an account can show up unnamed.</div>
+      <div style="margin-top:7px"><strong>Org id</strong> is the workspace inside that login. Personal
+      use and a company workspace on the same login get different org ids and keep separate chats.</div>
+      <div style="margin-top:7px"><strong>Claude app</strong> is which copy of the app opens them.
+      Each app has its own data folder and its own login.</div>
+      ${email?'':'<div style="margin-top:7px">Give it a name with the pencil button so it is easier to tell apart.</div>'}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${email?'<button class="p" id="ficopymail">Copy email</button>':''}
+      <button id="ficopyacct">Copy account id</button>
+      <button id="ficopypath">Copy folder path</button>
+    </div>`;
+  $('ovinfo').classList.add('on');
+  const hit=(id,val,lbl)=>{const el=$(id);if(el)el.onclick=()=>{navigator.clipboard.writeText(val);
+    el.textContent='Copied';setTimeout(()=>el.textContent=lbl,1200)}};
+  hit('ficopyacct',b.account,'Copy account id');
+  hit('ficopymail',email||'','Copy email');
+  hit('ficopypath',b.path||'','Copy folder path');
+}
+$('ficlose').onclick=()=>$('ovinfo').classList.remove('on');
+
+/* ---------- instances ---------- */
+const gb=b=>(b/1e9).toFixed(2)+' GB';
+async function loadInstances(){
+  const d=await api('/api/instances');
+  const t=d.transcripts||{files:0,bytes:0,path:''};
+  $('ilist').innerHTML=d.instances.map(i=>{
+    const s=i.size||{disposable:0,chats:0};
+    const junkPct=i.bytes?Math.round(s.disposable/i.bytes*100):0;
+    return `
+    <div style="border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card)">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+        <strong>${esc(i.name)}</strong>
+        <span class="dmeta" style="margin:0">${i.chats} chats · ${gb(i.bytes)} on disk</span></div>
+      <div class="dmeta" style="margin-top:3px">${i.apps.length?esc(i.apps.map(a=>a.split('/').pop()).join(', ')):'no app'}</div>
+      ${i.bytes?`<div class="dmeta" style="margin-top:5px">
+        ${gb(s.disposable)} of that (${junkPct}%) is cache and virtual-machine images.
+        Nothing you would back up.</div>`:''}
+      ${i.problem?`<div class="dmeta" style="margin-top:5px;color:var(--warn)">! ${esc(i.problem)}</div>`:''}
+    </div>`}).join('')+
+    `<div class="warn" style="margin-top:4px">
+       <strong>The sizes above are not backup sizes.</strong> Your conversations are not stored in
+       these folders at all — they live once in <code>${esc(t.path)}</code>
+       (${t.files} files, ${gb(t.bytes)}) and are shared by every Claude app.
+       A full backup packs those, not the cache.</div>`;
+}
+async function planInstance(){
+  const n=$('iname').value.trim();
+  $('icreate').disabled=true;
+  if(!n){$('iplan').innerHTML='';return}
+  const p=await api('/api/instance',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({name:n,dry:true})});
+  if(p.error){$('iplan').innerHTML=`<div class="dmeta" style="color:var(--warn)">${esc(p.error)}</div>`;return}
+  $('iplan').innerHTML=`<div class="warn">
+    <div>App: <code>${esc(p.app)}</code>${p.app_exists?' <strong>(exists, will be replaced)</strong>':''}</div>
+    <div style="margin-top:3px">Data: <code>${esc(p.data)}</code>${p.data_exists?' <strong>(exists, will be reused)</strong>':''}</div>
+    <div style="margin-top:3px">Copied from: <code>${esc(p.source)}</code></div>
+    <div style="margin-top:7px">Copies the app, points it at its own data folder, re-signs it.
+    macOS asks for your password itself. Claude PowerTools never sees or stores it.</div></div>`;
+  $('icreate').disabled=!p.source_ok;
+}
+$('instbtn').onclick=()=>{$('ovinst').classList.add('on');loadInstances();$('iplan').innerHTML='';$('iname').value=''};
+$('iclose').onclick=()=>$('ovinst').classList.remove('on');
+$('iname').oninput=()=>{clearTimeout(window._i);window._i=setTimeout(planInstance,300)};
+$('icreate').onclick=async()=>{
+  const n=$('iname').value.trim();
+  if(!confirm(`Create a new Claude instance named "${n}"?\n\nmacOS will ask for your password.`))return;
+  $('icreate').disabled=true;$('icreate').textContent='Creating…';
+  const r=await api('/api/instance',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({name:n,dry:false})});
+  $('icreate').textContent='Create…';
+  alert(r.ok?`Done. ${r.msg}\n\nOpen it from /Applications and sign in.`:`Not created:\n${r.msg}`);
+  loadInstances();
+};
+
+/* ---------- export + resume ---------- */
+$('rexport').onclick=()=>window.open(`/api/export?id=${encodeURIComponent(cur.cli_id)}&t=${T}`,'_blank');
+$('rresume').onclick=()=>{
+  const cmd=`cd ${JSON.stringify(cur.cwd||'.')} && claude --resume ${cur.cli_id}`;
+  navigator.clipboard.writeText(cmd);
+  $('rresume').textContent='Copied';
+  setTimeout(()=>$('rresume').textContent='Resume in Terminal',1600);
+  toast('Copied. Paste this in Terminal to carry on this chat in Claude Code:  '+cmd);
+};
+$('exportsel').onclick=async()=>{
+  const b=$('exportsel');b.disabled=true;b.textContent='Exporting…';
+  const r=await api('/api/export_many',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({ids:[...sel]})});
+  b.disabled=false;b.textContent='Export as MD';
+  toast(`Exported ${r.written} chat(s) to ${r.dir}`);
+};
+boot();
+</script></body></html>
