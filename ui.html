@@ -205,7 +205,7 @@ table.conn tr:hover td{background:var(--card)}
       <button id="rprev" title="Jump to the previous place this chat mentions your search">↑ Prev</button>
       <button id="rnext" title="Jump to the next place this chat mentions your search">↓ Next</button></span>
     <label class="ck"><input type="checkbox" id="rnoise" checked> hide tool noise</label>
-    <button id="rresume" title="Copies a command you paste into Terminal to continue this chat in Claude Code">Resume in Terminal</button><button id="rexport" title="Download this chat as a Markdown file">Export as MD</button><button id="rcopy">Copy</button><button id="rclose">Close</button>
+    <button id="rresume" title="Copies a command you paste into Terminal to continue this chat in Claude Code">Resume in Terminal</button><button id="rexport" title="Download this chat as a Markdown file">Export as MD</button><button id="rhtml" title="Open a printable page — then Cmd+P → Save as PDF">Save as PDF</button><button id="rcopy">Copy</button><button id="rclose">Close</button>
   </div>
   <div class="dbody" id="rbody"></div>
 </div></div>
@@ -242,6 +242,7 @@ table.conn tr:hover td{background:var(--card)}
   <div class="dhead"><div class="grow"><div class="dtitle">MCP connections</div>
     <div class="dmeta" id="mcpsub">which servers each Claude can reach</div></div>
     <input type="search" id="mcpq" placeholder="Search…" style="width:170px">
+    <button id="mcpcmp">Compare apps</button>
     <button id="mcpclose">Close</button></div>
   <div class="dbody" id="mcpbody" style="background:var(--bg)"></div></div></div>
 
@@ -325,7 +326,7 @@ const api=(p,o={})=>fetch(p+(p.includes('?')?'&':'?')+'t='+T,o).then(r=>{
   throw e});
 const $=id=>document.getElementById(id);
 const esc=s=>(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const when=ms=>ms?new Date(ms).toISOString().slice(0,10):'—';
+const when=ms=>ms?new Date(ms).toLocaleDateString('en-CA'):'—';
 const short=u=>u?u.slice(0,8):'';
 let scope=null,rows=[],sel=new Set(),tree=[],matched=0,lastAnchor=null;
 let cur=null,msgs=[],chatFiles=[],shown=0,mode='copy',lastMove=null,vis=[],matches=[],curMatch=-1;
@@ -564,7 +565,7 @@ function renderChunk(reset){
   if(!v.length){$('rcount').textContent='0 shown';body.innerHTML='<div class="empty">Nothing to show.</div>';return}
   const next=v.slice(shown,shown+40);
   body.insertAdjacentHTML('beforeend',next.map(m=>{
-    const stamp=`<div class="stamp">${esc((m.ts||'').slice(0,16).replace('T',' '))}</div>`;
+    const stamp=`<div class="stamp">${esc(m.ts?new Date(m.ts).toLocaleString([],{dateStyle:'short',timeStyle:'short'}):'')}</div>`;
     const inner=m.blocks.map(blockHtml).join('');
     return m.role==='user'
       ? `<div class="turn user"><div class="bubble">${stamp}<div class="inner">${inner}</div></div></div>`
@@ -678,10 +679,12 @@ async function openMove(){
 }
 async function runMove(){
   $('mgo').disabled=true;$('mgo').textContent='Working…';
+  const dest=$('dest').value, destInst=(dest||'').split('/')[0];
   const r=await api('/api/move',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({ids:[...sel],dest:$('dest').value,mode,dry:false})});
+    body:JSON.stringify({ids:[...sel],dest,mode,dry:false})});
   lastMove=r;$('ovmove').classList.remove('on');sel.clear();
-  toast(`${r.moved} chat(s) transferred. Quit Claude (Cmd+Q) and reopen to see them. Backup: ${r.backup}`);
+  toast(`${r.moved} chat(s) transferred. Backup: ${r.backup}`);
+  if(r.moved) await offerRestart(destInst);
   boot();
 }
 function toast(m){$('tmsg').textContent=m;$('toast').classList.add('on')}
@@ -1157,6 +1160,12 @@ async function loadSettings(){
   $('setBody').innerHTML='<div class="empty">reading…</div>';
   const d=await api('/api/settings');
   $('setFile').textContent=d.file;
+  const enumCtl=(s,cur)=>{
+    const opts=[...(s.options||[])], v=String(cur??'');
+    if(v&&!opts.includes(v))opts.unshift(v);
+    return `<select data-e="${esc(s.key)}">`+
+      opts.map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')+`</select>`;
+  };
   $('setBody').innerHTML=d.settings.map(s=>{
     const shown=s.set?s.value:s.default;
     const ctl=s.type==='bool'
@@ -1167,7 +1176,9 @@ async function loadSettings(){
              <input type="text" data-n="${esc(s.key)}" value="${esc(String(shown))}" style="width:90px">
              <span class="cwhere">${esc(s.unit||'')}</span>
              <button data-save="${esc(s.key)}">Save</button></div>`
-        : `<span class="cwhere">${esc(String(shown))}</span>`;
+        : s.type==='enum'
+          ? enumCtl(s,shown)
+          : `<span class="cwhere">${esc(String(shown))}</span>`;
     return `<div style="border:1px solid var(--line);border-radius:9px;padding:10px 12px;
               margin-bottom:8px;background:var(--card)${s.risky?';border-color:var(--warn)':''}">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
@@ -1188,6 +1199,9 @@ async function loadSettings(){
   $('setBody').querySelectorAll('button[data-save]').forEach(b=>b.onclick=async e=>{
     const k=e.currentTarget.dataset.save;
     await saveSetting(k, $('setBody').querySelector(`input[data-n="${CSS.escape(k)}"]`).value);
+  });
+  $('setBody').querySelectorAll('select[data-e]').forEach(sel=>sel.onchange=async e=>{
+    await saveSetting(e.target.dataset.e, e.target.value);
   });
 }
 async function saveSetting(key,value){
@@ -1376,6 +1390,7 @@ function drawMcp(){
       <td><span class="cwhere">${esc(m.kind)}</span></td>
       <td><div class="rowacts">
         ${m.secrets.length?`<button class="ico" data-act="key" title="Show the stored value">${EYE}</button>`:''}
+        ${m.kind==='extension'?`<button data-act="toggle" title="Turn this server on or off">${m.enabled?'Turn off':'Turn on'}</button>`:''}
         ${m.copyable?`<button data-act="copy">Copy to…</button>`:''}
       </div></td></tr>`).join('')+`</tbody></table>`
     :'<div class="empty">Nothing matches.</div>')+
@@ -1387,6 +1402,15 @@ function drawMcp(){
     copyMcpFlow(e.currentTarget.closest('tr').dataset.id)});
   $('mcpbody').querySelectorAll('[data-act="key"]').forEach(b=>b.onclick=e=>{
     revealKeys(e.currentTarget.closest('tr').dataset.id)});
+  $('mcpbody').querySelectorAll('[data-act="toggle"]').forEach(b=>b.onclick=async e=>{
+    const id=e.currentTarget.closest('tr').dataset.id;
+    const m=mcp.servers.find(x=>x.id===id);
+    const r=await api('/api/mcp_toggle',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({id,enable:!m.enabled})});
+    toast(r.ok?r.msg:(r.msg||'could not toggle'));
+    if(r.ok) await offerRestart(m.scope);
+    loadMcp();
+  });
 }
 async function revealKeys(id){
   const m=mcp.servers.find(x=>x.id===id);
@@ -1400,12 +1424,31 @@ async function revealKeys(id){
   for(const k of m.secrets){
     const r=await api(`/api/mcp_reveal?id=${encodeURIComponent(id)}&key=${encodeURIComponent(k)}`);
     parts.push(r.ok
-      ? `<div class="keyrow"><span>${esc(k)}</span><span class="keyval">${esc(r.value)}</span>
+      ? `<div class="keyrow" data-k="${esc(k)}"><span>${esc(k)}</span>
+         <span class="keyval" data-role="val">${esc(r.value)}</span>
+         ${r.editable?`<button class="ico" data-edit="${esc(k)}" title="Change this value">✎</button>`:''}
          <span>${esc(r.note)}</span></div>`
       : `<div class="keyrow">${esc(k)}: ${esc(r.msg)}</div>`);
   }
   box.innerHTML=parts.join('')+
     '<div class="keyrow" style="color:var(--warn)">on screen now, careful sharing this window</div>';
+  const refresh=()=>{delete box.dataset.open;revealKeys(id)};
+  box.querySelectorAll('[data-edit]').forEach(b=>b.onclick=e=>{
+    const key=e.currentTarget.dataset.edit, row=e.currentTarget.closest('.keyrow');
+    const cur=row.querySelector('[data-role="val"]')?.textContent||'';
+    row.innerHTML=`<span>${esc(key)}</span>
+      <input class="editval" style="flex:1;min-width:140px" value="${esc(cur)}">
+      <button data-save="1">Save</button><button data-cancel="1">Cancel</button>`;
+    const inp=row.querySelector('.editval');inp.focus();inp.select();
+    row.querySelector('[data-cancel]').onclick=refresh;
+    row.querySelector('[data-save]').onclick=async ev=>{
+      const val=inp.value;ev.currentTarget.textContent='Saving…';
+      const res=await api('/api/mcp_set_secret',{method:'POST',
+        headers:{'content-type':'application/json'},body:JSON.stringify({id,key,value:val})});
+      alert(res.ok?(res.msg||'updated'):(res.msg||'could not update'));
+      refresh();
+    };
+  });
 }
 let cpId=null;
 async function copyMcpFlow(id){
@@ -1442,21 +1485,32 @@ async function showAway(){
   const reveal=window._cpReveal?1:0;
   const d=await api(`/api/mcp_snippet?id=${encodeURIComponent(cpId)}&reveal=${reveal}`);
   if(!d.ok){$('cpAway').innerHTML=`<div class="warn">${esc(d.msg)}</div>`;return}
+  const mono='margin:0;padding:11px 13px;white-space:pre-wrap;word-break:break-word;font:12px/1.55 ui-monospace,Menlo,monospace';
+  const revealBtn=d.has_secrets?`<button id="cpReveal">${window._cpReveal?'Hide real values':'Show real values'}</button>`:'';
   $('cpAway').innerHTML=
-    `<div class="mgroup">steps on the other laptop</div>`+
-    `<ol style="margin:0 0 12px;padding-left:20px;font-size:13.5px;line-height:1.6">`+
-      d.steps.map(x=>`<li>${esc(x)}</li>`).join('')+`</ol>`+
-    (d.kind!=='extension'?`<div class="mgroup">file to edit there</div>
-      <div class="plan"><div><code>${esc(d.target)}</code></div></div>`:'')+
-    `<div class="mgroup">paste this${d.has_secrets?' — secrets are blanked out':''}</div>`+
-    `<div class="tw"><pre style="margin:0;padding:11px 13px;white-space:pre-wrap;word-break:break-word;
-      font:12px/1.55 ui-monospace,Menlo,monospace">${esc(d.snippet)}</pre></div>`+
-    `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-       <button id="cpCopySnip">Copy to clipboard</button>
-       ${d.has_secrets?`<button id="cpReveal">${window._cpReveal?'Hide real values':'Show real values'}</button>`:''}
-     </div>`;
-  $('cpCopySnip').onclick=()=>{navigator.clipboard.writeText(d.snippet);
-    $('cpCopySnip').textContent='Copied';setTimeout(()=>$('cpCopySnip').textContent='Copy to clipboard',1300)};
+    (d.commands?
+      `<div class="mgroup">easiest — paste this in Terminal on the other Mac</div>`+
+      (d.has_secrets&&!window._cpReveal
+        ?`<div class="warn" style="margin:0 0 8px">Click <b>Show real values</b> first so the key is filled in — otherwise the command pastes a blank you'd have to edit.</div>`:'')+
+      `<div class="tw"><pre style="${mono}">${esc(d.commands)}</pre></div>`+
+      `<div style="display:flex;gap:8px;margin:10px 0 4px;flex-wrap:wrap">
+         <button id="cpCopyCmd">Copy commands</button>${revealBtn}</div>`
+      :'')+
+    `<details style="margin-top:14px"${d.commands?'':' open'}>
+       <summary style="cursor:pointer;color:var(--dim);font-size:12px">or set it up by hand</summary>`+
+      `<div class="mgroup" style="margin-top:10px">steps on the other laptop</div>`+
+      `<ol style="margin:0 0 12px;padding-left:20px;font-size:13.5px;line-height:1.6">`+
+        d.steps.map(x=>`<li>${esc(x)}</li>`).join('')+`</ol>`+
+      (d.kind!=='extension'?`<div class="mgroup">file to edit there</div>
+        <div class="plan"><div><code>${esc(d.target)}</code></div></div>`:'')+
+      `<div class="mgroup">paste this${d.has_secrets?' — secrets are blanked out':''}</div>`+
+      `<div class="tw"><pre style="${mono}">${esc(d.snippet)}</pre></div>`+
+      `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+         <button id="cpCopySnip">Copy to clipboard</button>${d.commands?'':revealBtn}</div>`+
+    `</details>`;
+  const flash=(el,ok='Copied')=>{const t=el.textContent;el.textContent=ok;setTimeout(()=>el.textContent=t,1300)};
+  if($('cpCopyCmd'))$('cpCopyCmd').onclick=()=>{navigator.clipboard.writeText(d.commands);flash($('cpCopyCmd'))};
+  if($('cpCopySnip'))$('cpCopySnip').onclick=()=>{navigator.clipboard.writeText(d.snippet);flash($('cpCopySnip'))};
   if($('cpReveal'))$('cpReveal').onclick=()=>{window._cpReveal=!window._cpReveal;showAway()};
 }
 async function runMcpCopy(){
@@ -1468,7 +1522,14 @@ async function runMcpCopy(){
     body:JSON.stringify({id:cpId,to,dry:false})});
   $('ovcopy').classList.remove('on');
   toast(r.ok?r.msg:('Failed: '+r.msg));
+  if(r.ok) await offerRestart(to);
   loadMcp();
+}
+async function offerRestart(instance){
+  if(!instance||!confirm(`Quit and reopen ${instance} now so it picks up the change?`))return;
+  const r=await api('/api/restart_instance',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({instance})});
+  toast(r.ok?r.msg:(r.msg||'could not restart — quit and reopen it yourself'));
 }
 $('cpClose').onclick=$('cpCancel').onclick=()=>$('ovcopy').classList.remove('on');
 $('cpDest').onchange=planCopy;
@@ -1482,6 +1543,34 @@ document.querySelectorAll('#ovcopy .tab').forEach(t=>t.onclick=()=>{
 });
 $('mcpbtn').onclick=()=>{$('ovmcp').classList.add('on');$('mcpq').value='';loadMcp()};
 $('mcpclose').onclick=()=>$('ovmcp').classList.remove('on');
+$('mcpcmp').onclick=()=>drawCompare();
+function drawCompare(a,b){
+  const insts=mcp.instances||[];
+  if(insts.length<2){toast('need two Claude apps to compare');return}
+  a=a||insts[0]; b=b||insts[1];
+  const opt=(id,v)=>`<select id="${id}">`+insts.map(i=>`<option${i===v?' selected':''}>${esc(i)}</option>`).join('')+`</select>`;
+  $('mcpbody').innerHTML=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+     <button id="cmpBack">‹ Back</button> ${opt('cmpA',a)} <span class="cwhere">vs</span> ${opt('cmpB',b)}</div>
+     <div id="cmpOut" class="empty">comparing…</div>`;
+  $('cmpBack').onclick=drawMcp;
+  $('cmpA').onchange=$('cmpB').onchange=()=>drawCompare($('cmpA').value,$('cmpB').value);
+  runCompare(a,b);
+}
+async function runCompare(a,b){
+  const d=await api(`/api/mcp_diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+  if(!d.ok){$('cmpOut').innerHTML=`<div class="warn">${esc(d.msg)}</div>`;return}
+  const mark=x=>x?'✓':'—';
+  const diffs=d.rows.filter(r=>r.status!=='same');
+  $('cmpOut').innerHTML=`<table class="conn"><thead><tr><th>Connector</th>
+      <th style="text-align:center">${esc(a)}</th><th style="text-align:center">${esc(b)}</th></tr></thead><tbody>`+
+    d.rows.map(r=>{
+      const inA=r.status!=='only-b', inB=r.status!=='only-a';
+      const tag=r.status==='different'?' <span class="tag off">differs</span>':'';
+      return `<tr><td><b>${esc(r.name)}</b>${tag}</td>
+        <td style="text-align:center">${mark(inA)}</td><td style="text-align:center">${mark(inB)}</td></tr>`;
+    }).join('')+`</tbody></table>`+
+    (diffs.length?'':'<div class="empty" style="margin-top:10px">these two are identical</div>');
+}
 $('mcpq').oninput=()=>{clearTimeout(window._mc);window._mc=setTimeout(drawMcp,200)};
 
 /* ---------- account info ---------- */
@@ -1578,6 +1667,7 @@ $('icreate').onclick=async()=>{
 
 /* ---------- export + resume ---------- */
 $('rexport').onclick=()=>window.open(`/api/export?id=${encodeURIComponent(cur.cli_id)}&t=${T}`,'_blank');
+$('rhtml').onclick=()=>window.open(`/api/export?id=${encodeURIComponent(cur.cli_id)}&fmt=html&t=${T}`,'_blank');
 $('rresume').onclick=()=>{
   const cmd=`cd ${JSON.stringify(cur.cwd||'.')} && claude --resume ${cur.cli_id}`;
   navigator.clipboard.writeText(cmd);

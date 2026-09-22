@@ -625,6 +625,67 @@ def as_markdown(row: dict, msgs: list[dict], imgdir: str = "", files=None) -> st
     return "\n".join(head + body)
 
 
+def as_html(row: dict, msgs: list[dict], tp: str = "", files=None) -> str:
+    """A self-contained HTML page for one chat: inline CSS, images embedded as
+    base64 data URIs (survives sharing, no external files), thinking/tool/result
+    folded. `@media print` opens the folds so Cmd+P → Save as PDF captures all."""
+    import html as _h
+    import base64 as _b64
+    esc = lambda s: _h.escape(str(s if s is not None else ""))
+    out = ["""<!doctype html><meta charset="utf-8">
+<title>""" + esc(row.get("title") or "chat") + """</title>
+<style>
+ body{font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:820px;
+   margin:2rem auto;padding:0 1rem;color:#18181b;background:#fff}
+ h1{font-size:1.5rem;margin:.2rem 0}
+ .meta{color:#666;font-size:.85rem;border-bottom:1px solid #e4e4e7;padding-bottom:1rem;margin-bottom:1.5rem}
+ .turn{margin:1.1rem 0} .role{font-weight:600;font-size:.72rem;text-transform:uppercase;
+   letter-spacing:.05em;color:#a1a1aa;margin-bottom:.25rem}
+ .user .bubble{background:#f4f4f5;border-radius:10px;padding:.55rem .85rem}
+ .text{white-space:pre-wrap;word-break:break-word}
+ details{margin:.5rem 0;color:#555} summary{cursor:pointer;font-size:.85rem}
+ pre{background:#f6f8fa;padding:.7rem .8rem;border-radius:8px;overflow:auto;font-size:.82rem;white-space:pre-wrap;word-break:break-word}
+ img{max-width:100%;border-radius:8px;margin:.5rem 0}
+ @media print{details{display:block} details>summary{display:none} a{color:inherit}}
+</style>"""]
+    out.append("<h1>" + esc(row.get("title") or "(untitled)") + "</h1>")
+    meta = []
+    if row.get("cwd"):
+        meta.append("Project: " + esc(row["cwd"]))
+    meta += ["Model: " + esc(row.get("model")), "Messages: " + str(len(msgs)),
+             "Session: " + esc(row.get("cli_id"))]
+    out.append("<div class='meta'>" + " · ".join(meta) + "</div>")
+    for m in msgs:
+        role = m["role"]
+        ts = esc((m.get("ts") or "")[:19].replace("T", " "))
+        out.append(f"<div class='turn {esc(role)}'><div class='role'>{esc(role)} · {ts}</div>")
+        out.append("<div class='bubble'>" if role == "user" else "<div>")
+        for b in m["blocks"]:
+            k = b["kind"]
+            if k == "text":
+                out.append(f"<div class='text'>{esc(b['text'])}</div>")
+            elif k == "image":
+                raw, media = (nth_image(tp, b["idx"]) if tp else (None, None))
+                if raw:
+                    out.append(f'<img src="data:{media or "image/png"};base64,'
+                               f'{_b64.b64encode(raw).decode()}">')
+                else:
+                    out.append("<div class='text'><em>(screenshot)</em></div>")
+            elif k == "thinking":
+                out.append(f"<details><summary>thinking</summary><pre>{esc(b['text'])}</pre></details>")
+            elif k == "tool":
+                out.append(f"<details><summary>tool: {esc(b.get('name'))}</summary>"
+                           f"<pre>{esc(b['text'])}</pre></details>")
+            else:
+                out.append(f"<details><summary>result</summary><pre>{esc(b['text'])}</pre></details>")
+        out.append("</div></div>")
+    for f in files or []:
+        label = "PDF referenced" if f["kind"] == "pdf" else "File attached"
+        gone = "" if f["exists"] else " (no longer on disk)"
+        out.append(f"<div class='meta'>{label}: {esc(f['filename'])}{gone}</div>")
+    return "".join(out)
+
+
 def safe_filename(s: str, fallback: str = "chat") -> str:
     s = re.sub(r"[^A-Za-z0-9 ._-]", "", (s or "")).strip() or fallback
     return s[:70]
@@ -738,6 +799,45 @@ def _redact(cfg) -> dict:
     return out
 
 
+def _args_secrets(args) -> list[tuple]:
+    """(key, value) for creds embedded in an MCP args list rather than env:
+    an auth header like 'x-api-key:mb_...' or a token passed as 'FOO=bar',
+    including the value carried by a preceding --header/-H flag. Only pairs
+    whose key looks secret (SECRETISH) come back. URLs and bare flags are skipped."""
+    out, prev = [], ""
+    for a in (args or []):
+        if not isinstance(a, str):
+            prev = ""
+            continue
+        header_flag = prev in ("--header", "-H", "--headers")
+        if (":" in a or "=" in a) and not a.startswith(("http://", "https://", "-")):
+            sep = ":" if ":" in a else "="
+            k, val = a.split(sep, 1)
+            if header_flag or SECRETISH.search(k):
+                out.append((k.strip(), val.strip()))
+        prev = a
+    return out
+
+
+def _set_arg_secret(args, key, newval) -> list:
+    """Return args with the value half of `key` replaced by newval, matching the
+    same header/token forms _args_secrets recognises. Other args left untouched."""
+    out, prev = [], ""
+    for a in (args or []):
+        if (isinstance(a, str) and (":" in a or "=" in a)
+                and not a.startswith(("http://", "https://", "-"))):
+            sep = ":" if ":" in a else "="
+            k = a.split(sep, 1)[0]
+            if k.strip() == key and (prev in ("--header", "-H", "--headers")
+                                     or SECRETISH.search(k)):
+                out.append(k + sep + newval)
+                prev = a
+                continue
+        out.append(a)
+        prev = a
+    return out
+
+
 def _servers_from(cfg: dict, scope: str, source: str, shared: bool) -> list[dict]:
     out = []
     for name, v in (cfg.get("mcpServers") or {}).items():
@@ -760,7 +860,8 @@ def _servers_from(cfg: dict, scope: str, source: str, shared: bool) -> list[dict
                 "enabled": True,
                 "copyable": not shared,
                 "settings": _redact(v.get("env") or {}),
-                "secrets": [k for k in (v.get("env") or {}) if SECRETISH.search(k)],
+                "secrets": [k for k in (v.get("env") or {}) if SECRETISH.search(k)]
+                + [k for k, _ in _args_secrets(v.get("args"))],
             }
         )
     return out
@@ -856,8 +957,11 @@ def reveal_secret(server_id: str, key: str) -> dict:
     else:
         try:
             with open(srv["source"]) as fh:
-                val = ((json.load(fh).get("mcpServers") or {})
-                       .get(srv["name"], {}).get("env") or {}).get(key)
+                entry = (json.load(fh).get("mcpServers") or {}).get(srv["name"], {})
+            val = (entry.get("env") or {}).get(key)
+            if val is None:
+                val = next((vv for k, vv in _args_secrets(entry.get("args"))
+                            if k == key), None)
         except Exception:
             pass
     if val is None:
@@ -865,8 +969,197 @@ def reveal_secret(server_id: str, key: str) -> dict:
     enc = isinstance(val, str) and val.startswith("__encrypted__")
     return {"ok": True, "key": key, "value": val,
             "encrypted": enc,
+            "editable": (not srv["shared"]) and not enc,
             "note": "Claude encrypted this; the real value is not stored in the file"
             if enc else "stored in plain text in that file"}
+
+
+def set_secret(server_id: str, key: str, new_value: str, dry: bool = True) -> dict:
+    """Change one stored secret value in place (e.g. an MCP x-api-key), writing
+    back to the same config file. The old file is backed up and `undo` reverses it.
+    Refuses read-only shared configs and values Claude keeps encrypted per machine."""
+    srv = next((m for m in mcp_servers() if m["id"] == server_id), None)
+    if not srv:
+        return {"ok": False, "msg": "unknown server"}
+    if key not in (srv.get("secrets") or []):
+        return {"ok": False, "msg": "unknown setting"}
+    if srv["shared"]:
+        return {"ok": False,
+                "msg": "this one is shared across every app; edit its source file directly"}
+    if not isinstance(new_value, str) or new_value == "":
+        return {"ok": False, "msg": "value cannot be empty"}
+
+    if srv["id"].startswith("ext:"):
+        name = os.path.basename(srv["source"])
+        path = os.path.join(os.path.dirname(os.path.dirname(srv["source"])),
+                            "Claude Extensions Settings", name + ".json")
+        try:
+            with open(path) as fh:
+                doc = json.load(fh)
+        except Exception:
+            return {"ok": False, "msg": "cannot read its settings file"}
+        cur = (doc.get("userConfig") or {}).get(key)
+        if isinstance(cur, str) and cur.startswith("__encrypted__"):
+            return {"ok": False, "msg": "Claude keeps this encrypted; change it in Claude's settings"}
+        where = "extension setting"
+
+        def apply(d):
+            d.setdefault("userConfig", {})[key] = new_value
+            return d
+    else:
+        path = srv["source"]
+        try:
+            with open(path) as fh:
+                doc = json.load(fh)
+        except Exception:
+            return {"ok": False, "msg": "cannot read its config file"}
+        entry = (doc.get("mcpServers") or {}).get(srv["name"])
+        if not isinstance(entry, dict):
+            return {"ok": False, "msg": "server not found in file"}
+        if key in (entry.get("env") or {}):
+            cur = entry["env"][key]
+            if isinstance(cur, str) and cur.startswith("__encrypted__"):
+                return {"ok": False, "msg": "Claude keeps this encrypted; change it in Claude"}
+            where = "env value"
+
+            def apply(d):
+                d["mcpServers"][srv["name"]]["env"][key] = new_value
+                return d
+        elif any(k == key for k, _ in _args_secrets(entry.get("args"))):
+            where = "args header"
+
+            def apply(d):
+                e = d["mcpServers"][srv["name"]]
+                e["args"] = _set_arg_secret(e.get("args"), key, new_value)
+                return d
+        else:
+            return {"ok": False, "msg": "setting not found in file"}
+
+    plan = {"ok": True, "server": srv["name"], "key": key, "where": where, "file": path}
+    if dry:
+        return plan
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    bdir = os.path.join(BACKUPS, stamp)
+    os.makedirs(bdir, exist_ok=True)
+    b = os.path.join(bdir, "was__" + os.path.basename(path))
+    shutil.copy2(path, b)
+    with open(path, "w") as fh:
+        json.dump(apply(doc), fh, indent=2)
+    os.makedirs(STATE, exist_ok=True)
+    with open(UNDO, "w") as fh:
+        json.dump({"stamp": stamp, "mode": "secret", "backup": bdir, "actions": [],
+                   "restores": [{"path": path, "backup": b, "dir": False}]}, fh, indent=2)
+    plan["msg"] = "updated — quit Claude fully (Cmd+Q) and reopen for it to take effect"
+    plan["backup"] = bdir
+    return plan
+
+
+def _writable_settings_path(srv) -> str:
+    """The `Claude Extensions Settings/<id>.json` file backing an extension server."""
+    name = os.path.basename(srv["source"])
+    return os.path.join(os.path.dirname(os.path.dirname(srv["source"])),
+                        "Claude Extensions Settings", name + ".json")
+
+
+def toggle_mcp(server_id: str, enable: bool, dry: bool = True) -> dict:
+    """Turn an extension MCP server on or off by flipping `isEnabled` in its
+    settings file. Backed up + undoable. Only extensions — plain mcpServers
+    entries have no native disabled flag, so they are left alone."""
+    srv = next((m for m in mcp_servers() if m["id"] == server_id), None)
+    if not srv:
+        return {"ok": False, "msg": "unknown server"}
+    if not srv["id"].startswith("ext:"):
+        return {"ok": False,
+                "msg": "only extensions can be toggled here; a plain server has no off switch"}
+    path = _writable_settings_path(srv)
+    try:
+        with open(path) as fh:
+            doc = json.load(fh)
+    except Exception:
+        return {"ok": False, "msg": "cannot read its settings file"}
+    if bool(doc.get("isEnabled", True)) == bool(enable):
+        return {"ok": False, "msg": "already " + ("on" if enable else "off")}
+    plan = {"ok": True, "server": srv["name"], "enable": bool(enable), "file": path}
+    if dry:
+        return plan
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    bdir = os.path.join(BACKUPS, stamp)
+    os.makedirs(bdir, exist_ok=True)
+    b = os.path.join(bdir, "was__" + os.path.basename(path))
+    shutil.copy2(path, b)
+    doc["isEnabled"] = bool(enable)
+    with open(path, "w") as fh:
+        json.dump(doc, fh, indent=2)
+    os.makedirs(STATE, exist_ok=True)
+    with open(UNDO, "w") as fh:
+        json.dump({"stamp": stamp, "mode": "toggle", "backup": bdir, "actions": [],
+                   "restores": [{"path": path, "backup": b, "dir": False}]}, fh, indent=2)
+    plan["msg"] = ("turned " + ("on" if enable else "off")
+                   + " — quit Claude fully (Cmd+Q) and reopen for it to take effect")
+    plan["backup"] = bdir
+    return plan
+
+
+def instance_app(instance: str) -> str:
+    """The .app whose --user-data-dir points at this instance's data folder."""
+    data = os.path.join(SUPPORT, instance)
+    for app, d in app_bundles().items():
+        if d and os.path.normpath(d) == os.path.normpath(data):
+            return app
+    if instance == "Claude":  # the unpatched app uses the default folder
+        p = os.path.join(APPS_DIR, "Claude.app")
+        return p if os.path.exists(p) else ""
+    return ""
+
+
+def restart_instance(instance: str, dry: bool = True) -> dict:
+    """Quit a Claude app and reopen it — the step a moved/toggled config needs to
+    take effect. macOS `quit` is a request the app can refuse if it has a blocking
+    dialog; we report what happened rather than force-killing."""
+    import time
+    app = instance_app(instance)
+    if not app:
+        return {"ok": False, "msg": "could not find the app for " + instance}
+    name = os.path.splitext(os.path.basename(app))[0]
+    if dry:
+        return {"ok": True, "app": app, "name": name}
+    subprocess.run(["osascript", "-e", f'quit app "{name}"'], capture_output=True, text=True)
+    time.sleep(1.5)
+    r = subprocess.run(["open", "-a", app], capture_output=True, text=True)
+    ok = r.returncode == 0
+    return {"ok": ok, "name": name,
+            "msg": ("reopened " + name) if ok else (r.stderr or "could not reopen").strip()[:200]}
+
+
+def mcp_diff(a: str, b: str) -> dict:
+    """Compare the mcpServers of two Claude app instances. Values are compared but
+    never shown (only same/different/only-in-one), so no secret leaks."""
+    names = [i for i, _ in instance_roots()]
+
+    def load(inst):
+        p = os.path.join(SUPPORT, inst, "claude_desktop_config.json")
+        try:
+            with open(p) as fh:
+                return json.load(fh).get("mcpServers") or {}
+        except Exception:
+            return {}
+
+    if a not in names or b not in names:
+        return {"ok": False, "msg": "unknown instance", "instances": names}
+    A, B = load(a), load(b)
+    rows = []
+    for k in sorted(set(A) | set(B)):
+        if k in A and k not in B:
+            st = "only-a"
+        elif k in B and k not in A:
+            st = "only-b"
+        elif json.dumps(A[k], sort_keys=True) != json.dumps(B[k], sort_keys=True):
+            st = "different"
+        else:
+            st = "same"
+        rows.append({"name": k, "status": st})
+    return {"ok": True, "a": a, "b": b, "rows": rows, "instances": names}
 
 
 def copy_mcp(server_id: str, dest_instance: str, dry: bool = True) -> dict:
@@ -967,6 +1260,50 @@ def mcp_snippet(server_id: str, reveal: bool = False) -> dict:
             for k, v in (d or {}).items()
         }
 
+    def mask_args(args):
+        """Blank the value half of any cred embedded in an args list (e.g. the
+        header 'x-api-key:mb_…'), matching what _args_secrets flags. Leaves URLs
+        and ordinary flags alone. env's mask() never saw these, hence the leak."""
+        if reveal or not args:
+            return list(args or [])
+        keys = {k for k, _ in _args_secrets(args)}
+        out, prev = [], ""
+        for a in args:
+            if (isinstance(a, str) and (":" in a or "=" in a)
+                    and not a.startswith(("http://", "https://", "-"))):
+                sep = ":" if ":" in a else "="
+                k = a.split(sep, 1)[0]
+                if k.strip() in keys or prev in ("--header", "-H", "--headers"):
+                    out.append(k + sep + "PUT-YOUR-OWN-VALUE-HERE")
+                    prev = a
+                    continue
+            out.append(a)
+            prev = a
+        return out
+
+    def terminal_block(entry, name):
+        """One copy-paste block for a non-technical person on the other Mac:
+        quit Claude, merge this server into their config, reopen. Merges rather
+        than overwrites so an existing mcpServers block survives."""
+        return (
+            "# 1) close Claude\n"
+            "osascript -e 'quit app \"Claude\"' 2>/dev/null; sleep 1\n\n"
+            "# 2) add this MCP server (safely merges into any existing config)\n"
+            'CFG=~/"Library/Application Support/Claude/claude_desktop_config.json"\n'
+            'mkdir -p "$(dirname "$CFG")"\n'
+            'python3 - "$CFG" <<\'PY\'\n'
+            "import json,sys,os\n"
+            "p=sys.argv[1]\n"
+            'entry=json.loads(r"""' + json.dumps(entry, indent=2) + '""")\n'
+            "cfg=json.load(open(p)) if os.path.exists(p) else {}\n"
+            "cfg.setdefault('mcpServers',{})[" + json.dumps(name) + "]=entry\n"
+            "json.dump(cfg,open(p,'w'),indent=2)\n"
+            'print("added " + ' + json.dumps(name) + ' + " — reopening Claude")\n'
+            "PY\n\n"
+            "# 3) reopen Claude\n"
+            "open -a Claude"
+        )
+
     if srv["id"].startswith("ext:"):
         ext_name = os.path.basename(srv["source"])
         sett = os.path.join(os.path.dirname(os.path.dirname(srv["source"])),
@@ -1001,10 +1338,14 @@ def mcp_snippet(server_id: str, reveal: bool = False) -> dict:
     entry = dict(entry)
     if entry.get("env"):
         entry["env"] = mask(entry["env"])
+    if entry.get("args"):
+        entry["args"] = mask_args(entry["args"])
     local = bool(entry.get("command"))
     return {
         "ok": True, "name": srv["name"], "kind": srv["kind"],
         "snippet": json.dumps({"mcpServers": {srv["name"]: entry}}, indent=2),
+        "commands": terminal_block(entry, srv["name"]),
+        "reveal": reveal,
         "target": "~/Library/Application Support/<Claude app name>/claude_desktop_config.json",
         "has_secrets": bool(srv["secrets"]),
         "steps": [
@@ -1474,10 +1815,34 @@ KNOWN_SETTINGS = [
     {"key": "inputNeededNotifEnabled", "type": "bool", "default": False,
      "title": "Notify when Claude needs you",
      "why": "A push notification when a session is waiting on your answer."},
-    {"key": "theme", "type": "text", "default": "dark", "title": "Theme",
-     "why": "The colour theme Claude Code uses in the terminal."},
-    {"key": "effortLevel", "type": "text", "default": "medium", "title": "Effort level",
-     "why": "How hard Claude works by default before answering."},
+    {"key": "theme", "type": "enum", "default": "dark", "title": "Theme",
+     "why": "The colour theme Claude Code uses in the terminal.",
+     "options": ["dark", "light", "dark-daltonized", "light-daltonized"]},
+    {"key": "effortLevel", "type": "enum", "default": "medium", "title": "Effort level",
+     "why": "How hard Claude works by default before answering.",
+     "options": ["low", "medium", "high"]},
+    {"key": "model", "type": "enum", "default": "default", "title": "Default model",
+     "why": "Which model Claude Code uses unless a session picks another. "
+            "'default' lets Claude choose.",
+     "options": ["default", "opus", "sonnet", "haiku"]},
+    {"key": "outputStyle", "type": "enum", "default": "default", "title": "Output style",
+     "why": "How Claude formats answers by default.",
+     "options": ["default", "Explanatory", "Concise"]},
+    {"key": "includeCoAuthoredBy", "type": "bool", "default": True,
+     "title": "Add Co-Authored-By to commits",
+     "why": "Off drops the 'Co-Authored-By: Claude' line from commits and PRs Claude makes."},
+    {"key": "alwaysThinkingEnabled", "type": "bool", "default": False,
+     "title": "Always think first",
+     "why": "On makes Claude think before every reply by default."},
+    {"key": "autoCompactEnabled", "type": "bool", "default": True,
+     "title": "Auto-compact long sessions",
+     "why": "On lets Claude summarise older context automatically when a session grows long."},
+    {"key": "spinnerTipsEnabled", "type": "bool", "default": True,
+     "title": "Show spinner tips",
+     "why": "The little tips shown while Claude is working."},
+    {"key": "skipWorkflowUsageWarning", "type": "bool", "default": False,
+     "title": "Skip the workflow usage warning",
+     "why": "Silences the warning shown about workflow usage."},
     {"key": "skipDangerousModePermissionPrompt", "type": "bool", "default": False,
      "title": "Skip the dangerous-mode warning",
      "why": "On means Claude Code stops asking before entering the mode that "
@@ -2360,6 +2725,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, json.dumps({"error": "unknown chat"}))
             tp = row.get("transcript") or ""
             msgs = read_transcript(tp)
+            if qs.get("fmt", ["md"])[0] == "html":
+                raw = as_html(row, msgs, tp, transcript_files(tp)).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()  # inline so it opens in a tab → Cmd+P to save as PDF
+                return self.wfile.write(raw)
             text = as_markdown(row, msgs, "", transcript_files(tp))
             fn = safe_filename(row.get("title")) + ".md"
             raw = text.encode()
@@ -2369,6 +2741,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(raw)))
             self.end_headers()
             return self.wfile.write(raw)
+        if u.path == "/api/mcp_diff":
+            return self._ok(mcp_diff(qs.get("a", [""])[0], qs.get("b", [""])[0]))
         if u.path == "/api/image":
             p = transcript_for(qs.get("id", [""])[0])
             raw, media = nth_image(p, int(qs.get("n", ["0"])[0])) if p else (None, None)
@@ -2431,6 +2805,16 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/mcp_copy":
             return self._ok(copy_mcp(payload.get("id", ""), payload.get("to", ""),
                                      payload.get("dry", True)))
+        if u.path == "/api/mcp_set_secret":
+            return self._ok(set_secret(payload.get("id", ""), payload.get("key", ""),
+                                       payload.get("value", ""),
+                                       dry=payload.get("dry", False)))
+        if u.path == "/api/mcp_toggle":
+            return self._ok(toggle_mcp(payload.get("id", ""), bool(payload.get("enable")),
+                                       dry=payload.get("dry", False)))
+        if u.path == "/api/restart_instance":
+            return self._ok(restart_instance(payload.get("instance", ""),
+                                             dry=payload.get("dry", False)))
         if u.path == "/api/instance":
             try:
                 plan = instance_plan(payload.get("name", ""))
