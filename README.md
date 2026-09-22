@@ -85,10 +85,22 @@ is gone.
     powertools new-instance "Claude Work 4"          # dry run, prints the plan
     powertools new-instance "Claude Work 4" --yes    # creates it
 
-Creating one copies `/Applications/Claude.app`, patches its launcher to use a
-separate `--user-data-dir`, and re-signs it. That needs admin rights, so macOS
+Creating one makes a small launcher app (~1 MB) with its own bundle id, which
+execs the real `/Applications/Claude.app` binary against a separate
+`--user-data-dir`. That needs admin rights to write to `/Applications`, so macOS
 shows its own password prompt. powertools never sees or stores the password.
 The Instances panel in the web UI does the same thing with a full preview first.
+
+It deliberately does **not** copy `Claude.app`. A copy must be re-signed ad-hoc,
+and ad-hoc signing pins the bundle's designated requirement to that copy's own
+cdhash — so Squirrel can never validate a genuine Anthropic update, and the copy
+stays frozen on the build it was cloned from while re-downloading and discarding
+that update every hour. A launcher is always whatever version `Claude.app` is.
+
+One consequence worth knowing: because every launcher runs the same real app,
+Squirrel will not install an update while *any* Claude window is open
+(`App Still Running Error`), and the failed attempt discards the download. Quit
+them all when a new version is waiting.
 
 ## Export and resume
 

@@ -440,8 +440,10 @@ def app_bundles() -> dict:
             with open(launcher, "rb") as fh:
                 head = fh.read(4096)
             if head.startswith(b"#!"):
-                m = re.search(rb'user-data-dir="([^"]+)"', head)
-                data = m.group(1).decode() if m else None
+                # Shims quote the path either way: hand-written ones used a
+                # double-quoted heredoc, generated ones use shlex.quote (single).
+                m = re.search(rb"""user-data-dir=(["'])(.+?)\1""", head)
+                data = m.group(2).decode() if m else None
         except Exception:
             pass
         out[p] = data
@@ -519,32 +521,83 @@ def instances() -> list[dict]:
     return out
 
 
+def _slug(name: str) -> str:
+    """Folder- and bundle-id-safe slug: runs of punctuation become one dash."""
+    s = re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-")
+    return s or "instance"
+
+
 def instance_plan(name: str) -> dict:
-    """What creating a new Claude instance would do. Nothing is run here."""
+    """What creating a new Claude instance would do. Nothing is run here.
+
+    The instance is a small launcher .app (~1 MB), not a copy of Claude.app.
+    A copy has to be re-signed ad-hoc, and ad-hoc signing pins the bundle's
+    designated requirement to that copy's own cdhash - so Squirrel can never
+    validate a genuine Anthropic update and the copy is frozen on whatever
+    build it was cloned from. A launcher execs the real, Apple-signed binary,
+    so it is always whatever version Claude.app is: updates need no re-cloning.
+
+    The launcher also gets its own CFBundleIdentifier. Sharing the real app's
+    id makes macOS treat the two as one app: they share the Squirrel update
+    cache (one clone's cleanup deletes the other's staged download and jams
+    the updater) and share one Notifications row.
+    """
     name = (name or "").strip()
     if not SAFE_NAME.match(name):
         raise ValueError("name must be letters, numbers, spaces, - or _ (max 49)")
+    slug = _slug(name)
     app = os.path.join(APPS_DIR, name + ".app")
-    data = os.path.join(SUPPORT, name.replace(" ", "-"))
+    data = os.path.join(SUPPORT, slug)
     src = os.path.join(APPS_DIR, "Claude.app")
+    real = os.path.join(src, "Contents", "MacOS", "Claude")
+    bundle_id = "com.anthropic.claudefordesktop." + slug.lower()
+    plist = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n<dict>\n'
+        '  <key>CFBundleExecutable</key><string>Claude</string>\n'
+        f'  <key>CFBundleIdentifier</key><string>{bundle_id}</string>\n'
+        f'  <key>CFBundleName</key><string>{name}</string>\n'
+        f'  <key>CFBundleDisplayName</key><string>{name}</string>\n'
+        '  <key>CFBundleIconFile</key><string>app</string>\n'
+        '  <key>CFBundlePackageType</key><string>APPL</string>\n'
+        '  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>\n'
+        '  <key>CFBundleShortVersionString</key><string>1.0</string>\n'
+        '  <key>LSMinimumSystemVersion</key><string>11.0</string>\n'
+        '  <key>NSHighResolutionCapable</key><true/>\n'
+        '</dict>\n</plist>\n'
+    )
+    # Built at a staging path and swapped in, so a failure never leaves the
+    # user without a working app. An existing bundle is moved aside, not deleted.
     script = f"""#!/bin/bash
 set -e
-APP_ORIG={shlex.quote(src)}
 APP_NEW={shlex.quote(app)}
-DATA_DIR={shlex.quote(data)}
+SRC={shlex.quote(src)}
+STAGE="$APP_NEW.staging"
 
-rm -rf "$APP_NEW"
-cp -R "$APP_ORIG" "$APP_NEW"
-mv "$APP_NEW/Contents/MacOS/Claude" "$APP_NEW/Contents/MacOS/Claude-real"
+rm -rf "$STAGE"
+mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
+cp "$SRC/Contents/Resources/electron.icns" "$STAGE/Contents/Resources/app.icns" 2>/dev/null || true
 
-cat > "$APP_NEW/Contents/MacOS/Claude" <<'INNEREOF'
+cat > "$STAGE/Contents/Info.plist" <<'PLISTEOF'
+{plist}PLISTEOF
+
+cat > "$STAGE/Contents/MacOS/Claude" <<'INNEREOF'
 #!/bin/bash
-DIR="$( cd "$( dirname "${{BASH_SOURCE[0]}}" )" && pwd )"
-exec "$DIR/Claude-real" --user-data-dir={shlex.quote(data)} "$@"
+# Launcher only: runs the genuine Claude.app binary on its own data folder.
+# Nothing is copied, so Claude.app keeps auto-updating and this follows it.
+exec {shlex.quote(real)} --user-data-dir={shlex.quote(data)} "$@"
 INNEREOF
 
-chmod +x "$APP_NEW/Contents/MacOS/Claude"
-codesign --force --deep --sign - "$APP_NEW"
+chmod +x "$STAGE/Contents/MacOS/Claude"
+chown -R root:admin "$STAGE"
+codesign --force --sign - "$STAGE"
+
+if [ -d "$APP_NEW" ]; then
+  mv "$APP_NEW" "$APP_NEW.old-$(date +%Y%m%d-%H%M%S)"
+fi
+mv "$STAGE" "$APP_NEW"
 echo DONE
 """
     return {
@@ -552,6 +605,7 @@ echo DONE
         "app": app,
         "data": data,
         "source": src,
+        "bundle_id": bundle_id,
         "script": script,
         "app_exists": os.path.exists(app),
         "data_exists": os.path.exists(data),
@@ -3303,7 +3357,11 @@ def main():
         print(f"app:    {plan['app']}{'   (ALREADY EXISTS, will be replaced)' if plan['app_exists'] else ''}")
         print(f"data:   {plan['data']}{'   (exists, will be reused)' if plan['data_exists'] else ''}")
         print(f"source: {plan['source']}")
-        print("\nthis copies the app, points it at its own data folder and re-signs it.")
+        print(f"id:     {plan['bundle_id']}")
+        print("\nthis makes a small launcher app (~1 MB) that runs the real Claude")
+        print("binary against its own data folder. Nothing is copied, so the")
+        print("instance is always the same version as Claude.app and updates itself")
+        print("whenever Claude.app updates.")
         print("macOS will ask for your password; Claude PowerTools never sees it.")
         if not a.yes:
             return print("\ndry run. add --yes to create it.")

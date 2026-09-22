@@ -1646,8 +1646,11 @@ async function planInstance(){
   $('iplan').innerHTML=`<div class="warn">
     <div>App: <code>${esc(p.app)}</code>${p.app_exists?' <strong>(exists, will be replaced)</strong>':''}</div>
     <div style="margin-top:3px">Data: <code>${esc(p.data)}</code>${p.data_exists?' <strong>(exists, will be reused)</strong>':''}</div>
-    <div style="margin-top:3px">Copied from: <code>${esc(p.source)}</code></div>
-    <div style="margin-top:7px">Copies the app, points it at its own data folder, re-signs it.
+    <div style="margin-top:3px">Runs: <code>${esc(p.source)}</code></div>
+    <div style="margin-top:3px">Bundle id: <code>${esc(p.bundle_id||'')}</code></div>
+    <div style="margin-top:7px">Makes a small launcher app (~1 MB) that runs the real Claude
+    binary against its own data folder. Nothing is copied, so this instance is always the
+    same version as Claude.app and picks up every update automatically.
     macOS asks for your password itself. Claude PowerTools never sees or stores it.</div></div>`;
   $('icreate').disabled=!p.source_ok;
 }
