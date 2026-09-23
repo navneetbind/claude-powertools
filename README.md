@@ -102,6 +102,33 @@ Squirrel will not install an update while *any* Claude window is open
 (`App Still Running Error`), and the failed attempt discards the download. Quit
 them all when a new version is waiting.
 
+## When an update will not install
+
+Claude downloads the update, then silently throws it away and downloads it again
+an hour later. Two scripts in `scripts/`, both run from Terminal with Claude
+closed. Neither is needed in normal use.
+
+    ./scripts/finish-update.sh
+
+Quits every instance and waits until the processes are really gone, clears the
+`updaterFailedInstall` backoff counter that failed attempts leave in each
+profile, stages the download using a *throwaway* profile — a fresh profile
+checks for updates within ~30s, an existing one can take five minutes — then
+quits cleanly so ShipIt can swap the bundle. macOS asks for your password
+because `/Applications/Claude.app` is owned by root.
+
+    ./scripts/install-from-dmg.sh ~/Downloads/Claude.dmg
+
+The fallback, and more reliable: it skips Squirrel entirely, so there is no
+four-second race against the app exiting and no staged bundle to lose. It
+verifies the DMG's app first — strict `codesign`, Team ID `Q6L2SF6YDW`, and
+Gatekeeper — and refuses to install anything that fails. The new app is copied
+in beside the old one and only swapped once complete, and the old bundle is
+moved to `Claude.old-<timestamp>.app` rather than deleted.
+
+Because every launcher points at `/Applications/Claude.app`, replacing it
+updates all of them at once.
+
 ## Export and resume
 
     powertools export --match "GST"                  # -> ~/Downloads/powertools-export-<ts>/
