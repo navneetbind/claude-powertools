@@ -82,52 +82,89 @@ broken pairings: a data folder with no app, or an app pointing at a folder that
 is gone.
 
     powertools instances
-    powertools new-instance "Claude Work 4"          # dry run, prints the plan
-    powertools new-instance "Claude Work 4" --yes    # creates it
+    powertools new-instance "Claude Work 4"              # dry run, prints the plan
+    powertools new-instance "Claude Work 4" --yes        # full copy (default)
+    powertools new-instance "Claude Work 4" --launcher   # 1 MB launcher instead
 
-Creating one makes a small launcher app (~1 MB) with its own bundle id, which
-execs the real `/Applications/Claude.app` binary against a separate
-`--user-data-dir`. That needs admin rights to write to `/Applications`, so macOS
-shows its own password prompt. powertools never sees or stores the password.
-The Instances panel in the web UI does the same thing with a full preview first.
+Writing to `/Applications` needs admin rights, so macOS shows its own password
+prompt. powertools never sees or stores the password. The Instances panel in the
+web UI does the same with a full preview first and a choice of the two kinds.
 
-It deliberately does **not** copy `Claude.app`. A copy must be re-signed ad-hoc,
-and ad-hoc signing pins the bundle's designated requirement to that copy's own
-cdhash — so Squirrel can never validate a genuine Anthropic update, and the copy
-stays frozen on the build it was cloned from while re-downloading and discarding
-that update every hour. A launcher is always whatever version `Claude.app` is.
+### Copy or launcher — you cannot have everything for free
 
-One consequence worth knowing: because every launcher runs the same real app,
-Squirrel will not install an update while *any* Claude window is open
-(`App Still Running Error`), and the failed attempt discards the download. Quit
-them all when a new version is waiting.
+| | Full copy (default) | Launcher |
+|---|---|---|
+| Notification click opens this instance | yes | no — opens the default profile |
+| Own row in System Settings > Notifications | yes | no — shares Claude's |
+| Updates itself | no — rebuild after each update | yes, always Claude.app's version |
+| Size | ~870 MB | ~1 MB |
 
-## When an update will not install
+A notification click activates an app by **bundle id**. A launcher execs the
+real `Claude.app` binary, so to macOS every launcher *is*
+`com.anthropic.claudefordesktop` and every click lands in the default profile.
 
-Claude downloads the update, then silently throws it away and downloads it again
-an hour later. Two scripts in `scripts/`, both run from Terminal with Claude
-closed. Neither is needed in normal use.
+A copy gets its own id — but changing the id means editing `Info.plist`, which is
+sealed, so the copy must be re-signed. Ad-hoc signing pins its designated
+requirement to its own cdhash, so Squirrel can never validate a genuine
+Anthropic update for it: left alone, a copy sits on the build it was cloned
+from, re-downloading and discarding that update every hour. The fix is to
+rebuild copies from `Claude.app` after it updates, which `scripts/update-claude.sh`
+does for you.
 
-    ./scripts/finish-update.sh
+The frameworks cannot be shared to save the 870 MB. By symlink, the hardened
+runtime SIGKILLs an ad-hoc binary that loads Anthropic-signed frameworks
+(verified: exit 137). By hard link, re-signing would rewrite `Claude.app`'s own
+files.
 
-Quits every instance and waits until the processes are really gone, clears the
-`updaterFailedInstall` backoff counter that failed attempts leave in each
-profile, stages the download using a *throwaway* profile — a fresh profile
-checks for updates within ~30s, an existing one can take five minutes — then
-quits cleanly so ShipIt can swap the bundle. macOS asks for your password
-because `/Applications/Claude.app` is owned by root.
+The first launch of a freshly built copy asks for **"Claude Safe Storage"** — click
+Always Allow. Until you do, the app sits with no window. The keychain entry is
+bound to the copy's cdhash, so this comes back once per instance per update.
+
+## Updating Claude and its instances
+
+    ./scripts/update-claude.sh
+
+The one to use. Asks Anthropic's release feed — the same one the app queries,
+`api.anthropic.com/api/desktop/darwin/<arch>/squirrel/update` — for the current
+build, downloads it from `downloads.claude.ai`, and checks it twice before
+anything is installed: the feed's sha256, then strict `codesign`, Team ID
+`Q6L2SF6YDW` and Gatekeeper. It refuses a download from any other host. Then it
+quits every Claude, swaps the new `Claude.app` in (the old one is kept as
+`Claude.old-<timestamp>.app`), and rebuilds every instance that is now behind.
+Run it with nothing to update and it still brings stale instances up to date.
+Two password prompts: one to install, one to rebuild the instances.
+
+    ./scripts/reclone-instances.sh [--dry-run] [--force]
+
+Rebuilds instances on their own: any launcher, any copy older than `Claude.app`,
+any copy sharing the real app's bundle id. Keeps each instance's existing bundle
+id so its Notifications row survives, keeps its data folder, and moves the old
+bundle to your Trash. A copy that is running is quit first — Electron reads
+`app.asar` lazily, so replacing a bundle under a live window breaks it.
+
+It copies with `ditto --noqtn`. A `Claude.app` installed from a browser-downloaded
+DMG carries the quarantine flag; that is harmless on the notarized original, but a
+quarantined ad-hoc copy is refused by Gatekeeper ("Apple could not verify ...
+is free of malware"), and every process started from a window of it is killed.
+
+### When the built-in updater will not install
+
+Squirrel refuses to install while any instance of the target app is running,
+gives it about four seconds to exit — a window with Claude Code sessions takes
+longer — and throws the download away on failure. It also writes an
+`updaterFailedInstall` counter into the profile and then stops trying that
+version. `update-claude.sh` avoids all of it. Two older routes remain:
 
     ./scripts/install-from-dmg.sh ~/Downloads/Claude.dmg
 
-The fallback, and more reliable: it skips Squirrel entirely, so there is no
-four-second race against the app exiting and no staged bundle to lose. It
-verifies the DMG's app first — strict `codesign`, Team ID `Q6L2SF6YDW`, and
-Gatekeeper — and refuses to install anything that fails. The new app is copied
-in beside the old one and only swapped once complete, and the old bundle is
-moved to `Claude.old-<timestamp>.app` rather than deleted.
+Same checks and swap as `update-claude.sh`, from a DMG you downloaded yourself.
 
-Because every launcher points at `/Applications/Claude.app`, replacing it
-updates all of them at once.
+    ./scripts/finish-update.sh
+
+Drives Squirrel itself: clears the counter, quits everything, stages the update
+from a throwaway profile (a fresh profile checks within ~30s, an existing one
+can take five minutes), then quits so ShipIt can swap the bundle. Least
+reliable of the three.
 
 ## Export and resume
 

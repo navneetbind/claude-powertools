@@ -81,8 +81,13 @@ for i in $(seq 1 60); do
   if [ -n "$V" ] && [ "$V" != "$CUR" ]; then
     echo
     echo "SUCCESS: /Applications/Claude.app is now $V"
-    echo "All three launchers point at it, so they are updated too."
     rm -rf "$TMPPROF"
+    # Instances are full copies that cannot update themselves; bring them up to
+    # the Claude.app just installed.
+    if [ -x "$(dirname "$0")/reclone-instances.sh" ]; then
+      echo; echo "==> Bringing instances up to Claude.app..."
+      "$(dirname "$0")/reclone-instances.sh"
+    fi
     exit 0
   fi
   sleep 5

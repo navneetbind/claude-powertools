@@ -53,8 +53,14 @@ GOT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" /Applicatio
 if [ "$GOT" = "$NEWV" ] && codesign --verify -R="$REQ" /Applications/Claude.app 2>/dev/null; then
   echo
   echo "SUCCESS: /Applications/Claude.app is now $GOT (verified genuine)"
-  echo "All three launchers point at it, so they are updated too."
+  echo "Instances are rebuilt from it next."
   echo "Old bundle kept at /Applications/Claude.old-$STAMP.app - delete it once happy."
+# Instances are full copies that cannot update themselves; bring them up to
+# the Claude.app just installed.
+if [ -x "$(dirname "$0")/reclone-instances.sh" ]; then
+  echo; echo "==> Bringing instances up to Claude.app..."
+  "$(dirname "$0")/reclone-instances.sh"
+fi
   exit 0
 fi
 

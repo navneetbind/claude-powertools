@@ -304,6 +304,10 @@ table.conn tr:hover td{background:var(--card)}
       <div style="font-weight:650;margin-bottom:8px">Add another instance</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <input type="text" id="iname" placeholder="Claude Work 4" style="flex:1;min-width:200px">
+        <select id="imode" title="How to make the instance">
+          <option value="copy" selected>Full copy (notifications open it)</option>
+          <option value="launcher">Launcher, 1 MB (updates itself)</option>
+        </select>
         <button class="p" id="icreate" disabled>Create…</button>
       </div>
       <div id="iplan" style="margin-top:10px"></div>
@@ -1641,28 +1645,34 @@ async function planInstance(){
   $('icreate').disabled=true;
   if(!n){$('iplan').innerHTML='';return}
   const p=await api('/api/instance',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({name:n,dry:true})});
+    body:JSON.stringify({name:n,dry:true,mode:$('imode').value})});
   if(p.error){$('iplan').innerHTML=`<div class="dmeta" style="color:var(--warn)">${esc(p.error)}</div>`;return}
   $('iplan').innerHTML=`<div class="warn">
     <div>App: <code>${esc(p.app)}</code>${p.app_exists?' <strong>(exists, will be replaced)</strong>':''}</div>
     <div style="margin-top:3px">Data: <code>${esc(p.data)}</code>${p.data_exists?' <strong>(exists, will be reused)</strong>':''}</div>
     <div style="margin-top:3px">Runs: <code>${esc(p.source)}</code></div>
     <div style="margin-top:3px">Bundle id: <code>${esc(p.bundle_id||'')}</code></div>
-    <div style="margin-top:7px">Makes a small launcher app (~1 MB) that runs the real Claude
-    binary against its own data folder. Nothing is copied, so this instance is always the
-    same version as Claude.app and picks up every update automatically.
+    <div style="margin-top:7px">${p.mode==='copy'
+      ? `Copies Claude.app (~870 MB) with its own bundle id, so a notification click opens this
+         instance. A copy cannot update itself: after each Claude update run
+         <code>scripts/update-claude.sh</code>, which rebuilds it. First launch asks for
+         &ldquo;Claude Safe Storage&rdquo; &mdash; click Always Allow.`
+      : `A 1 MB launcher that runs the real Claude binary on its own data folder. Always the
+         same version as Claude.app &mdash; but macOS sees it as Claude.app, so notification
+         clicks open the default profile.`}
     macOS asks for your password itself. Claude PowerTools never sees or stores it.</div></div>`;
   $('icreate').disabled=!p.source_ok;
 }
 $('instbtn').onclick=()=>{$('ovinst').classList.add('on');loadInstances();$('iplan').innerHTML='';$('iname').value=''};
 $('iclose').onclick=()=>$('ovinst').classList.remove('on');
 $('iname').oninput=()=>{clearTimeout(window._i);window._i=setTimeout(planInstance,300)};
+$('imode').onchange=planInstance;
 $('icreate').onclick=async()=>{
   const n=$('iname').value.trim();
   if(!confirm(`Create a new Claude instance named "${n}"?\n\nmacOS will ask for your password.`))return;
   $('icreate').disabled=true;$('icreate').textContent='Creating…';
   const r=await api('/api/instance',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({name:n,dry:false})});
+    body:JSON.stringify({name:n,dry:false,mode:$('imode').value})});
   $('icreate').textContent='Create…';
   alert(r.ok?`Done. ${r.msg}\n\nOpen it from /Applications and sign in.`:`Not created:\n${r.msg}`);
   loadInstances();

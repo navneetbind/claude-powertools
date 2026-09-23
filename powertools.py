@@ -527,53 +527,42 @@ def _slug(name: str) -> str:
     return s or "instance"
 
 
-def instance_plan(name: str) -> dict:
-    """What creating a new Claude instance would do. Nothing is run here.
+INSTANCE_MODES = ("copy", "launcher")
 
-    The instance is a small launcher .app (~1 MB), not a copy of Claude.app.
-    A copy has to be re-signed ad-hoc, and ad-hoc signing pins the bundle's
-    designated requirement to that copy's own cdhash - so Squirrel can never
-    validate a genuine Anthropic update and the copy is frozen on whatever
-    build it was cloned from. A launcher execs the real, Apple-signed binary,
-    so it is always whatever version Claude.app is: updates need no re-cloning.
-
-    The launcher also gets its own CFBundleIdentifier. Sharing the real app's
-    id makes macOS treat the two as one app: they share the Squirrel update
-    cache (one clone's cleanup deletes the other's staged download and jams
-    the updater) and share one Notifications row.
-    """
-    name = (name or "").strip()
-    if not SAFE_NAME.match(name):
-        raise ValueError("name must be letters, numbers, spaces, - or _ (max 49)")
-    slug = _slug(name)
-    app = os.path.join(APPS_DIR, name + ".app")
-    data = os.path.join(SUPPORT, slug)
-    src = os.path.join(APPS_DIR, "Claude.app")
-    real = os.path.join(src, "Contents", "MacOS", "Claude")
-    bundle_id = "com.anthropic.claudefordesktop." + slug.lower()
-    plist = (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-        '<plist version="1.0">\n<dict>\n'
-        '  <key>CFBundleExecutable</key><string>Claude</string>\n'
-        f'  <key>CFBundleIdentifier</key><string>{bundle_id}</string>\n'
-        f'  <key>CFBundleName</key><string>{name}</string>\n'
-        f'  <key>CFBundleDisplayName</key><string>{name}</string>\n'
-        '  <key>CFBundleIconFile</key><string>app</string>\n'
-        '  <key>CFBundlePackageType</key><string>APPL</string>\n'
-        '  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>\n'
-        '  <key>CFBundleShortVersionString</key><string>1.0</string>\n'
-        '  <key>LSMinimumSystemVersion</key><string>11.0</string>\n'
-        '  <key>NSHighResolutionCapable</key><true/>\n'
-        '</dict>\n</plist>\n'
-    )
-    # Built at a staging path and swapped in, so a failure never leaves the
-    # user without a working app. An existing bundle is moved aside, not deleted.
-    script = f"""#!/bin/bash
+_COPY_SCRIPT = """#!/bin/bash
 set -e
-APP_NEW={shlex.quote(app)}
-SRC={shlex.quote(src)}
+APP_NEW=@APP@
+SRC=@SRC@
+STAGE="$APP_NEW.staging"
+
+rm -rf "$STAGE"
+# --noqtn: a Claude.app from a browser-downloaded DMG is quarantined. Harmless
+# on the notarized original, but Gatekeeper refuses a quarantined ad-hoc copy.
+ditto --noqtn "$SRC" "$STAGE"
+xattr -dr com.apple.quarantine "$STAGE" 2>/dev/null || true
+mv "$STAGE/Contents/MacOS/Claude" "$STAGE/Contents/MacOS/Claude-real"
+
+cat > "$STAGE/Contents/MacOS/Claude" <<'INNEREOF'
+#!/bin/bash
+# Claude instance: a full copy of Claude.app with its own bundle id, so a
+# notification click opens this window. Rebuild after every Claude update.
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+exec "$DIR/Claude-real" --user-data-dir=@DATA@ "$@"
+INNEREOF
+chmod +x "$STAGE/Contents/MacOS/Claude"
+
+# The id must be set before signing: Info.plist is part of the seal.
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier @ID@" "$STAGE/Contents/Info.plist"
+codesign --force --deep --sign - "$STAGE"
+chown -R root:admin "$STAGE"
+@SWAP@
+echo DONE
+"""
+
+_LAUNCHER_SCRIPT = """#!/bin/bash
+set -e
+APP_NEW=@APP@
+SRC=@SRC@
 STAGE="$APP_NEW.staging"
 
 rm -rf "$STAGE"
@@ -581,27 +570,113 @@ mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
 cp "$SRC/Contents/Resources/electron.icns" "$STAGE/Contents/Resources/app.icns" 2>/dev/null || true
 
 cat > "$STAGE/Contents/Info.plist" <<'PLISTEOF'
-{plist}PLISTEOF
+@PLIST@PLISTEOF
 
 cat > "$STAGE/Contents/MacOS/Claude" <<'INNEREOF'
 #!/bin/bash
 # Launcher only: runs the genuine Claude.app binary on its own data folder.
 # Nothing is copied, so Claude.app keeps auto-updating and this follows it.
-exec {shlex.quote(real)} --user-data-dir={shlex.quote(data)} "$@"
+exec @REAL@ --user-data-dir=@DATA@ "$@"
 INNEREOF
 
 chmod +x "$STAGE/Contents/MacOS/Claude"
 chown -R root:admin "$STAGE"
 codesign --force --sign - "$STAGE"
-
-if [ -d "$APP_NEW" ]; then
-  mv "$APP_NEW" "$APP_NEW.old-$(date +%Y%m%d-%H%M%S)"
-fi
-mv "$STAGE" "$APP_NEW"
+@SWAP@
 echo DONE
 """
+
+
+def instance_plan(name: str, mode: str = "copy") -> dict:
+    """What creating a new Claude instance would do. Nothing is run here.
+
+    Two ways to make an instance, and neither gets everything:
+
+    copy (default) - a full copy of Claude.app with its own CFBundleIdentifier.
+      macOS treats it as its own app, so a notification click opens this
+      window. But changing the id means re-signing, and ad-hoc signing pins
+      the bundle to its own cdhash, so it can never validate a genuine update
+      itself: rebuild it after each Claude update (scripts/reclone-instances.sh,
+      which scripts/update-claude.sh runs for you). ~870 MB. The frameworks
+      cannot be shared with Claude.app: the hardened runtime SIGKILLs an ad-hoc
+      binary loading Anthropic-signed frameworks.
+
+    launcher - a ~1 MB app that execs the real Claude.app binary. Always the
+      same version as Claude.app, nothing to rebuild. But the running process
+      *is* Claude.app to macOS, so every notification click opens the default
+      profile, and all instances share one Notifications row.
+    """
+    import plistlib
+    name = (name or "").strip()
+    mode = (mode or "copy").strip().lower()
+    if mode not in INSTANCE_MODES:
+        raise ValueError("mode must be copy or launcher")
+    if not SAFE_NAME.match(name):
+        raise ValueError("name must be letters, numbers, spaces, - or _ (max 49)")
+    slug = _slug(name)
+    app = os.path.join(APPS_DIR, name + ".app")
+    data = os.path.join(SUPPORT, slug)
+    src = os.path.join(APPS_DIR, "Claude.app")
+    real = os.path.join(src, "Contents", "MacOS", "Claude")
+
+    # Keep an existing instance's own id, so its Notifications row survives.
+    bundle_id = "com.anthropic.claudefordesktop." + slug.lower()
+    try:
+        with open(os.path.join(app, "Contents", "Info.plist"), "rb") as fh:
+            have = plistlib.load(fh).get("CFBundleIdentifier", "")
+        if have.startswith("com.anthropic.claudefordesktop.") and len(have) > 31:
+            bundle_id = have
+    except Exception:
+        pass
+
+    # An existing bundle goes to your Trash, re-owned to you so emptying it
+    # does not ask for a password. Never deleted in place.
+    user = os.environ.get("USER") or os.path.basename(HOME)
+    trash = os.path.join(HOME, ".Trash")
+    swap = (
+        'if [ -d "$APP_NEW" ]; then\n'
+        f'  chown -R {shlex.quote(user)}:staff "$APP_NEW"\n'
+        f'  mv "$APP_NEW" {shlex.quote(trash)}/{shlex.quote(name)}" (replaced $(date +%Y%m%d-%H%M%S)).app"\n'
+        'fi\n'
+        'mv "$STAGE" "$APP_NEW"'
+    )
+
+    if mode == "copy":
+        script = (_COPY_SCRIPT
+                  .replace("@APP@", shlex.quote(app))
+                  .replace("@SRC@", shlex.quote(src))
+                  .replace("@DATA@", shlex.quote(data))
+                  .replace("@ID@", bundle_id)
+                  .replace("@SWAP@", swap))
+    else:
+        plist = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+            '<plist version="1.0">\n<dict>\n'
+            '  <key>CFBundleExecutable</key><string>Claude</string>\n'
+            f'  <key>CFBundleIdentifier</key><string>{bundle_id}</string>\n'
+            f'  <key>CFBundleName</key><string>{name}</string>\n'
+            f'  <key>CFBundleDisplayName</key><string>{name}</string>\n'
+            '  <key>CFBundleIconFile</key><string>app</string>\n'
+            '  <key>CFBundlePackageType</key><string>APPL</string>\n'
+            '  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>\n'
+            '  <key>CFBundleShortVersionString</key><string>1.0</string>\n'
+            '  <key>LSMinimumSystemVersion</key><string>11.0</string>\n'
+            '  <key>NSHighResolutionCapable</key><true/>\n'
+            '</dict>\n</plist>\n'
+        )
+        script = (_LAUNCHER_SCRIPT
+                  .replace("@APP@", shlex.quote(app))
+                  .replace("@SRC@", shlex.quote(src))
+                  .replace("@PLIST@", plist)
+                  .replace("@REAL@", shlex.quote(real))
+                  .replace("@DATA@", shlex.quote(data))
+                  .replace("@SWAP@", swap))
+
     return {
         "name": name,
+        "mode": mode,
         "app": app,
         "data": data,
         "source": src,
@@ -2871,7 +2946,8 @@ class Handler(BaseHTTPRequestHandler):
                                              dry=payload.get("dry", False)))
         if u.path == "/api/instance":
             try:
-                plan = instance_plan(payload.get("name", ""))
+                plan = instance_plan(payload.get("name", ""),
+                                     payload.get("mode", "copy"))
             except ValueError as e:
                 return self._ok({"error": str(e)})
             if payload.get("dry", True):
@@ -3114,6 +3190,9 @@ def main():
     ni = sub.add_parser("new-instance", help="create another Claude app instance")
     ni.add_argument("name")
     ni.add_argument("--yes", action="store_true", help="actually create it")
+    ni.add_argument("--launcher", action="store_true",
+                    help="1 MB launcher instead of a full copy: follows Claude.app's "
+                         "updates, but notification clicks open the default profile")
 
     ex = sub.add_parser("export", help="export chats to markdown")
     ex.add_argument("--scope", help="bucket key, default everything")
@@ -3351,17 +3430,23 @@ def main():
 
     if cmd == "new-instance":
         try:
-            plan = instance_plan(a.name)
+            plan = instance_plan(a.name, "launcher" if a.launcher else "copy")
         except ValueError as e:
             return print("error:", e)
         print(f"app:    {plan['app']}{'   (ALREADY EXISTS, will be replaced)' if plan['app_exists'] else ''}")
         print(f"data:   {plan['data']}{'   (exists, will be reused)' if plan['data_exists'] else ''}")
         print(f"source: {plan['source']}")
         print(f"id:     {plan['bundle_id']}")
-        print("\nthis makes a small launcher app (~1 MB) that runs the real Claude")
-        print("binary against its own data folder. Nothing is copied, so the")
-        print("instance is always the same version as Claude.app and updates itself")
-        print("whenever Claude.app updates.")
+        if plan["mode"] == "copy":
+            print("\nthis copies Claude.app (~870 MB) with its own bundle id, so a")
+            print("notification click opens this instance. A copy cannot update itself:")
+            print("after each Claude update run scripts/update-claude.sh, which rebuilds")
+            print("it. Use --launcher for a 1 MB app that follows Claude.app's updates,")
+            print("at the cost of notification clicks opening the default profile.")
+        else:
+            print("\nthis makes a 1 MB launcher that runs the real Claude binary on its own")
+            print("data folder. It is always Claude.app's version, but macOS sees it as")
+            print("Claude.app: notification clicks open the default profile.")
         print("macOS will ask for your password; Claude PowerTools never sees it.")
         if not a.yes:
             return print("\ndry run. add --yes to create it.")
