@@ -1191,7 +1191,9 @@ def uninstall_run(purge: bool = False) -> dict:
              'if [ $rc -ne 0 ]; then echo; echo "brew could not uninstall it (exit $rc). Nothing else was changed."; read -n1 -s -p "Press any key..."; exit $rc; fi']
     if purge:
         lines.append('rm -rf "$HOME/.claude-powertools" && echo "Removed ~/.claude-powertools"')
-    lines += ['pkill -f "powertools serve" 2>/dev/null',
+    # a bare `powertools` is the server too (serve is the default command), so
+    # match the program name at the end of the command line, not just "serve"
+    lines += ["pkill -f '[/ ]powertools(\\.py)?( serve.*)?$' 2>/dev/null",
               'echo; echo "Claude PowerTools is uninstalled. You can close this window."',
               "read -n1 -s -p 'Press any key...'"]
     with open(f, "w") as fh:
