@@ -177,7 +177,7 @@ table.conn tr:hover td{background:var(--card)}
 #toast.on{display:flex}
 </style></head><body>
 <div id="wrap">
-<aside><h1>Claude PowerTools</h1><div class="sub" id="tot">loading…</div><div id="tree"></div><div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px"><button id="usebtn" style="width:100%;margin-bottom:6px">Usage…</button><button id="membtn" style="width:100%;margin-bottom:6px">What Claude remembers…</button><button id="mcpbtn" style="width:100%;margin-bottom:6px">MCP connections…</button><button id="bkbtn" style="width:100%;margin-bottom:6px">Backup &amp; move Mac…</button><button id="setbtn" style="width:100%;margin-bottom:6px">Claude settings…</button><button id="instbtn" style="width:100%">Instances…</button></div></aside>
+<aside><h1>Claude PowerTools</h1><div class="sub" id="tot">loading…</div><div id="tree"></div><div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px"><button id="usebtn" style="width:100%;margin-bottom:6px">Usage…</button><button id="membtn" style="width:100%;margin-bottom:6px">What Claude remembers…</button><button id="mcpbtn" style="width:100%;margin-bottom:6px">MCP connections…</button><button id="bkbtn" style="width:100%;margin-bottom:6px">Backup &amp; move Mac…</button><button id="setbtn" style="width:100%;margin-bottom:6px">Claude settings…</button><button id="instbtn" style="width:100%;margin-bottom:14px">Instances…</button><button id="unbtn" style="width:100%;opacity:.7">Uninstall PowerTools…</button></div></aside>
 <main>
 <header>
   <input type="search" id="q" placeholder="Search titles…  (/ to focus)">
@@ -1668,6 +1668,15 @@ async function planInstance(){
       Claude PowerTools never sees it. First launch asks for &ldquo;Claude Safe Storage&rdquo; &mdash; Always Allow.</div></div>`;
   $('icreate').disabled=!p.source_ok;
 }
+/* ---------- uninstall ---------- */
+$('unbtn').onclick=async()=>{
+  const i=await api('/api/uninstall_info');
+  if(!i.via_brew){alert('This copy was not installed with Homebrew, so there is nothing for brew to remove.\nDelete the powertools file you installed by hand.');return}
+  if(!confirm('Uninstall Claude PowerTools?\n\nThis runs "brew uninstall --cask claude-powertools" in Terminal and stops this dashboard.\nYour Claude chats, apps and Claude Code data are NOT touched.'))return;
+  const purge=confirm(`Also delete PowerTools' own data?\n\n${i.state} (${(i.state_bytes/1e6).toFixed(0)} MB): chat search index, account names, reset times and ${i.backups} backup(s) made when moving chats.\n\nOK = delete it too (backups and "undo" are lost)\nCancel = keep it`);
+  const r=await api('/api/uninstall_run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({purge})});
+  toast(r.msg||(r.ok?'Terminal opened':'failed'));
+};
 /* ---------- update Claude ---------- */
 async function loadUpdate(){
   $('updver').textContent='checking…';$('updmsg').textContent='';

@@ -1142,6 +1142,67 @@ def legacy_instances() -> list:
     return out
 
 
+def _brew_path() -> str:
+    for c in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew"):
+        if os.path.exists(c):
+            return c
+    return shutil.which("brew") or ""
+
+
+def uninstall_info() -> dict:
+    """What 'Uninstall PowerTools' would touch. Brew owns the program; our own
+    folder (index, account names, reset times, transfer backups) is separate."""
+    brew = _brew_path()
+    via_brew = False
+    if brew:
+        r = subprocess.run([brew, "list", "--cask", "claude-powertools"],
+                           capture_output=True, text=True)
+        via_brew = r.returncode == 0
+    size = 0
+    backups = 0
+    for root, _, files in os.walk(STATE):
+        for f in files:
+            try:
+                size += os.path.getsize(os.path.join(root, f))
+            except OSError:
+                pass
+    bk = os.path.join(STATE, "backups")
+    if os.path.isdir(bk):
+        backups = len(os.listdir(bk))
+    return {"brew": brew, "via_brew": via_brew, "state": STATE,
+            "state_bytes": size, "backups": backups}
+
+
+def uninstall_run(purge: bool = False) -> dict:
+    """Open Terminal running `brew uninstall --cask claude-powertools`. Only if
+    that succeeds: optionally delete our own folder, then stop this server. Claude's
+    own chats, apps and Claude Code data are never touched."""
+    info = uninstall_info()
+    if not info["brew"] or not info["via_brew"]:
+        return {"ok": False,
+                "msg": "This copy was not installed with Homebrew, so there is nothing for "
+                       "brew to remove. Delete the powertools file you installed by hand."}
+    import tempfile
+    d = tempfile.mkdtemp(prefix="pt-uninstall-")
+    f = os.path.join(d, "uninstall.command")
+    lines = ["#!/bin/bash", "clear",
+             f"{shlex.quote(info['brew'])} uninstall --cask claude-powertools",
+             "rc=$?",
+             'if [ $rc -ne 0 ]; then echo; echo "brew could not uninstall it (exit $rc). Nothing else was changed."; read -n1 -s -p "Press any key..."; exit $rc; fi']
+    if purge:
+        lines.append('rm -rf "$HOME/.claude-powertools" && echo "Removed ~/.claude-powertools"')
+    lines += ['pkill -f "powertools serve" 2>/dev/null',
+              'echo; echo "Claude PowerTools is uninstalled. You can close this window."',
+              "read -n1 -s -p 'Press any key...'"]
+    with open(f, "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    os.chmod(f, 0o755)
+    r = subprocess.run(["open", "-a", "Terminal", f], capture_output=True, text=True)
+    return {"ok": r.returncode == 0,
+            "msg": "Terminal opened - it runs the uninstall there." if r.returncode == 0
+            else (r.stderr or "could not open Terminal").strip()[:200]}
+
+
 def claude_update_status() -> dict:
     """Installed Claude.app version vs what Anthropic's release feed offers (the
     same feed the app itself asks), plus which instance copies lag behind."""
@@ -2827,6 +2888,8 @@ class Handler(BaseHTTPRequestHandler):
                 "servers": mcp_servers(),
                 "instances": [i for i, _ in instance_roots()],
             })
+        if u.path == "/api/uninstall_info":
+            return self._ok(uninstall_info())
         if u.path == "/api/claude_update_status":
             return self._ok(claude_update_status())
         if u.path == "/api/pick":
@@ -2950,6 +3013,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/mcp_toggle":
             return self._ok(toggle_mcp(payload.get("id", ""), bool(payload.get("enable")),
                                        dry=payload.get("dry", False)))
+        if u.path == "/api/uninstall_run":
+            return self._ok(uninstall_run(bool(payload.get("purge"))))
         if u.path == "/api/claude_update_run":
             return self._ok(claude_update_run(payload.get("mode", ""), payload.get("dmg", ""), payload.get("name", "")))
         if u.path == "/api/restart_instance":
