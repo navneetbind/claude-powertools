@@ -527,189 +527,51 @@ def _slug(name: str) -> str:
     return s or "instance"
 
 
-INSTANCE_MODES = ("copy", "launcher")
-
-_COPY_SCRIPT = """#!/bin/bash
-set -e
-APP_NEW=@APP@
-SRC=@SRC@
-STAGE="$APP_NEW.staging"
-
-rm -rf "$STAGE"
-# --noqtn: a Claude.app from a browser-downloaded DMG is quarantined. Harmless
-# on the notarized original, but Gatekeeper refuses a quarantined ad-hoc copy.
-ditto --noqtn "$SRC" "$STAGE"
-xattr -dr com.apple.quarantine "$STAGE" 2>/dev/null || true
-mv "$STAGE/Contents/MacOS/Claude" "$STAGE/Contents/MacOS/Claude-real"
-
-cat > "$STAGE/Contents/MacOS/Claude" <<'INNEREOF'
-#!/bin/bash
-# Claude instance: a full copy of Claude.app with its own bundle id, so a
-# notification click opens this window. Rebuild after every Claude update.
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-exec "$DIR/Claude-real" --user-data-dir=@DATA@ "$@"
-INNEREOF
-chmod +x "$STAGE/Contents/MacOS/Claude"
-
-# The id must be set before signing: Info.plist is part of the seal.
-/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier @ID@" "$STAGE/Contents/Info.plist"
-codesign --force --deep --sign - "$STAGE"
-chown -R root:admin "$STAGE"
-@SWAP@
-echo DONE
-"""
-
-_LAUNCHER_SCRIPT = """#!/bin/bash
-set -e
-APP_NEW=@APP@
-SRC=@SRC@
-STAGE="$APP_NEW.staging"
-
-rm -rf "$STAGE"
-mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
-cp "$SRC/Contents/Resources/electron.icns" "$STAGE/Contents/Resources/app.icns" 2>/dev/null || true
-
-cat > "$STAGE/Contents/Info.plist" <<'PLISTEOF'
-@PLIST@PLISTEOF
-
-cat > "$STAGE/Contents/MacOS/Claude" <<'INNEREOF'
-#!/bin/bash
-# Launcher only: runs the genuine Claude.app binary on its own data folder.
-# Nothing is copied, so Claude.app keeps auto-updating and this follows it.
-exec @REAL@ --user-data-dir=@DATA@ "$@"
-INNEREOF
-
-chmod +x "$STAGE/Contents/MacOS/Claude"
-chown -R root:admin "$STAGE"
-codesign --force --sign - "$STAGE"
-@SWAP@
-echo DONE
-"""
-
-
-def instance_plan(name: str, mode: str = "copy") -> dict:
+def instance_plan(name: str, mode: str = "instance") -> dict:
     """What creating a new Claude instance would do. Nothing is run here.
 
-    Two ways to make an instance, and neither gets everything:
-
-    copy (default) - a full copy of Claude.app with its own CFBundleIdentifier.
-      macOS treats it as its own app, so a notification click opens this
-      window. But changing the id means re-signing, and ad-hoc signing pins
-      the bundle to its own cdhash, so it can never validate a genuine update
-      itself: rebuild it after each Claude update (scripts/reclone-instances.sh,
-      which scripts/update-claude.sh runs for you). ~870 MB. The frameworks
-      cannot be shared with Claude.app: the hardened runtime SIGKILLs an ad-hoc
-      binary loading Anthropic-signed frameworks.
-
-    launcher - a ~1 MB app that execs the real Claude.app binary. Always the
-      same version as Claude.app, nothing to rebuild. But the running process
-      *is* Claude.app to macOS, so every notification click opens the default
-      profile, and all instances share one Notifications row.
+    An instance is two bundles (built by scripts/reclone-instances.sh --add):
+    a real, unshimmed copy of Claude.app with its own bundle id in
+    ~/Applications/Claude Instances (this is what gets a menu-bar icon and
+    notifications), and a ~1 MB launcher in /Applications that starts it on its
+    own profile. Copies cannot update themselves: after each Claude update run
+    scripts/update-claude.sh (or the Update button), which rebuilds them.
     """
-    import plistlib
     name = (name or "").strip()
-    mode = (mode or "copy").strip().lower()
-    if mode not in INSTANCE_MODES:
-        raise ValueError("mode must be copy or launcher")
     if not SAFE_NAME.match(name):
         raise ValueError("name must be letters, numbers, spaces, - or _ (max 49)")
     slug = _slug(name)
     app = os.path.join(APPS_DIR, name + ".app")
     data = os.path.join(SUPPORT, slug)
     src = os.path.join(APPS_DIR, "Claude.app")
-    real = os.path.join(src, "Contents", "MacOS", "Claude")
-
-    # Keep an existing instance's own id, so its Notifications row survives.
-    bundle_id = "com.anthropic.claudefordesktop." + slug.lower()
-    try:
-        with open(os.path.join(app, "Contents", "Info.plist"), "rb") as fh:
-            have = plistlib.load(fh).get("CFBundleIdentifier", "")
-        if have.startswith("com.anthropic.claudefordesktop.") and len(have) > 31:
-            bundle_id = have
-    except Exception:
-        pass
-
-    # An existing bundle goes to your Trash, re-owned to you so emptying it
-    # does not ask for a password. Never deleted in place.
-    user = os.environ.get("USER") or os.path.basename(HOME)
-    trash = os.path.join(HOME, ".Trash")
-    swap = (
-        'if [ -d "$APP_NEW" ]; then\n'
-        f'  chown -R {shlex.quote(user)}:staff "$APP_NEW"\n'
-        f'  mv "$APP_NEW" {shlex.quote(trash)}/{shlex.quote(name)}" (replaced $(date +%Y%m%d-%H%M%S)).app"\n'
-        'fi\n'
-        'mv "$STAGE" "$APP_NEW"'
-    )
-
-    if mode == "copy":
-        script = (_COPY_SCRIPT
-                  .replace("@APP@", shlex.quote(app))
-                  .replace("@SRC@", shlex.quote(src))
-                  .replace("@DATA@", shlex.quote(data))
-                  .replace("@ID@", bundle_id)
-                  .replace("@SWAP@", swap))
-    else:
-        plist = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-            '<plist version="1.0">\n<dict>\n'
-            '  <key>CFBundleExecutable</key><string>Claude</string>\n'
-            f'  <key>CFBundleIdentifier</key><string>{bundle_id}</string>\n'
-            f'  <key>CFBundleName</key><string>{name}</string>\n'
-            f'  <key>CFBundleDisplayName</key><string>{name}</string>\n'
-            '  <key>CFBundleIconFile</key><string>app</string>\n'
-            '  <key>CFBundlePackageType</key><string>APPL</string>\n'
-            '  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>\n'
-            '  <key>CFBundleShortVersionString</key><string>1.0</string>\n'
-            '  <key>LSMinimumSystemVersion</key><string>11.0</string>\n'
-            '  <key>NSHighResolutionCapable</key><true/>\n'
-            '</dict>\n</plist>\n'
-        )
-        script = (_LAUNCHER_SCRIPT
-                  .replace("@APP@", shlex.quote(app))
-                  .replace("@SRC@", shlex.quote(src))
-                  .replace("@PLIST@", plist)
-                  .replace("@REAL@", shlex.quote(real))
-                  .replace("@DATA@", shlex.quote(data))
-                  .replace("@SWAP@", swap))
-
+    bundle_id = "com.anthropic.claudefordesktop." + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return {
         "name": name,
-        "mode": mode,
+        "mode": "instance",
         "app": app,
+        "real": os.path.join(HOME, "Applications", "Claude Instances", name + ".app"),
         "data": data,
         "source": src,
         "bundle_id": bundle_id,
-        "script": script,
         "app_exists": os.path.exists(app),
         "data_exists": os.path.exists(data),
         "source_ok": os.path.exists(src),
     }
 
 
-def create_instance(plan: dict) -> dict:
-    """Run the plan. macOS shows its own password prompt - Claude PowerTools never sees
-    the password, and never stores it."""
+def create_instance(plan: dict, terminal: bool = True) -> dict:
+    """Run the plan. The script asks for your password through macOS itself -
+    Claude PowerTools never sees it. From the UI it runs in a Terminal window (it
+    must not die with the app it is building); from the CLI it runs right here."""
     if not plan["source_ok"]:
         return {"ok": False, "msg": "/Applications/Claude.app not found"}
-    os.makedirs(STATE, exist_ok=True)
-    sh = os.path.join(STATE, "new-instance.sh")
-    with open(sh, "w") as fh:
-        fh.write(plan["script"])
-    os.chmod(sh, 0o755)
-    r = subprocess.run(
-        ["osascript", "-e",
-         f'do shell script {json.dumps(sh)} with administrator privileges'],
-        capture_output=True, text=True,
-    )
-    ok = r.returncode == 0 and "DONE" in (r.stdout or "")
-    return {
-        "ok": ok,
-        "msg": "created " + plan["app"] if ok
-        else (r.stderr or r.stdout or "cancelled").strip()[:400],
-        "script_path": sh,
-    }
+    if plan["app_exists"]:
+        return {"ok": False, "msg": plan["app"] + " already exists - choose another name"}
+    if terminal:
+        return claude_update_run("add", name=plan["name"])
+    rc = subprocess.call([os.path.join(scripts_dir(), "reclone-instances.sh"),
+                          "--add", plan["name"]])
+    return {"ok": rc == 0, "msg": "created " + plan["app"] if rc == 0 else f"exit {rc}"}
 
 
 # ---------------------------------------------------------------- export
@@ -1261,6 +1123,113 @@ def restart_instance(instance: str, dry: bool = True) -> dict:
             "msg": ("reopened " + name) if ok else (r.stderr or "could not reopen").strip()[:200]}
 
 
+def legacy_instances() -> list:
+    """Instances (launchers in /Applications that carry a --user-data-dir) still in
+    an older layout - the ones that never get a menu-bar icon or notification
+    row. `reclone-instances.sh` converts them."""
+    out = []
+    for app in sorted(glob.glob("/Applications/*.app")):
+        shim = os.path.join(app, "Contents", "MacOS", "Claude")
+        try:
+            with open(shim, "rb") as fh:
+                head = fh.read(200000)
+        except OSError:
+            continue
+        if not head.startswith(b"#!") or b"user-data-dir=" not in head:
+            continue
+        if b"open -n" not in head:
+            out.append(os.path.basename(app)[:-4])
+    return out
+
+
+def claude_update_status() -> dict:
+    """Installed Claude.app version vs what Anthropic's release feed offers (the
+    same feed the app itself asks), plus which instance copies lag behind."""
+    import platform
+    import urllib.request
+    import uuid
+    app = "/Applications/Claude.app"
+    plist = os.path.join(app, "Contents", "Info.plist")
+    try:
+        inst = subprocess.run(["/usr/libexec/PlistBuddy", "-c",
+                               "Print :CFBundleShortVersionString", plist],
+                              capture_output=True, text=True).stdout.strip()
+    except Exception:
+        inst = ""
+    quarantined = False
+    try:
+        quarantined = "com.apple.quarantine" in subprocess.run(
+            ["xattr", app], capture_output=True, text=True).stdout
+    except Exception:
+        pass
+    arch = "arm64" if platform.machine() == "arm64" else "x64"
+    latest, err = "", ""
+    try:
+        url = (f"https://api.anthropic.com/api/desktop/darwin/{arch}/squirrel/update"
+               f"?device_id={uuid.uuid4()}&version={inst or '0'}")
+        with urllib.request.urlopen(url, timeout=15) as r:
+            body = r.read()
+        if body.strip():
+            rels = (json.loads(body).get("releases") or [])
+            if rels:
+                latest = rels[0].get("updateTo", {}).get("version", "")
+        if not latest:
+            latest = inst          # feed answers empty when you are current
+    except Exception as e:
+        err = str(e)[:160]
+    copies = []
+    base = os.path.expanduser("~/Applications/Claude Instances")
+    for a in sorted(glob.glob(os.path.join(base, "*.app"))):
+        v = subprocess.run(["/usr/libexec/PlistBuddy", "-c",
+                            "Print :CFBundleShortVersionString",
+                            os.path.join(a, "Contents", "Info.plist")],
+                           capture_output=True, text=True).stdout.strip()
+        copies.append({"name": os.path.basename(a)[:-4], "version": v,
+                       "stale": bool(inst) and v != inst})
+    return {"installed": inst, "latest": latest, "error": err,
+            "update_available": bool(latest and inst and latest != inst),
+            "quarantined": quarantined, "copies": copies,
+            "scripts_ok": os.path.isfile(os.path.join(scripts_dir(), "update-claude.sh")),
+            "legacy": legacy_instances()}
+
+
+def claude_update_run(mode: str, dmg: str = "", name: str = "") -> dict:
+    """Open Terminal.app running the update script. It has to be a real
+    Terminal: the script quits every Claude window, asks for the admin password
+    once, and must not die with the app that launched it. A .command file is
+    opened with `open -a Terminal`, which needs no Automation permission."""
+    scripts = scripts_dir()
+    if mode == "auto":
+        cmd = shlex.quote(os.path.join(scripts, "update-claude.sh"))
+    elif mode == "rebuild":
+        cmd = shlex.quote(os.path.join(scripts, "reclone-instances.sh")) + " --force"
+    elif mode == "fix":
+        cmd = shlex.quote(os.path.join(scripts, "reclone-instances.sh"))
+    elif mode == "add":
+        if not SAFE_NAME.match(name or ""):
+            return {"ok": False, "msg": "name must be letters, numbers, spaces, - or _ (max 49)"}
+        cmd = shlex.quote(os.path.join(scripts, "reclone-instances.sh")) + " --add " + shlex.quote(name)
+    elif mode == "dmg":
+        if not dmg.lower().endswith(".dmg") or not os.path.isfile(dmg):
+            return {"ok": False, "msg": "pick a .dmg file"}
+        cmd = shlex.quote(os.path.join(scripts, "install-from-dmg.sh")) + " " + shlex.quote(dmg)
+    else:
+        return {"ok": False, "msg": "unknown mode"}
+    if not os.path.isfile(os.path.join(scripts, "update-claude.sh")):
+        return {"ok": False, "msg": "update scripts not found in " + scripts}
+    os.makedirs(STATE, exist_ok=True)
+    f = os.path.join(STATE, "run-update.command")
+    with open(f, "w") as fh:
+        fh.write("#!/bin/bash\nclear\n" + cmd + "\nrc=$?\necho\n"
+                 'echo "Finished (exit $rc). You can close this window."\n'
+                 "read -n1 -s -p 'Press any key...'\n")
+    os.chmod(f, 0o755)
+    r = subprocess.run(["open", "-a", "Terminal", f], capture_output=True, text=True)
+    return {"ok": r.returncode == 0,
+            "msg": "Terminal opened - follow it there (it quits every Claude window and asks for your password once)."
+                   if r.returncode == 0 else (r.stderr or "could not open Terminal").strip()[:200]}
+
+
 def mcp_diff(a: str, b: str) -> dict:
     """Compare the mcpServers of two Claude app instances. Values are compared but
     never shown (only same/different/only-in-one), so no secret leaks."""
@@ -1709,7 +1678,10 @@ def fts_ready() -> int:
 def pick_path(kind: str = "file") -> dict:
     """Open the real macOS file chooser. This is a local app, so the picker
     belongs on the desktop rather than being a path the user has to type."""
-    if kind == "folder":
+    if kind == "dmg":
+        script = ('POSIX path of (choose file with prompt '
+                  '"Pick the Claude .dmg you downloaded" of type {"public.disk-image", "com.apple.disk-image-udif"})')
+    elif kind == "folder":
         script = ('POSIX path of (choose folder with prompt '
                   '"Where should the backup go?")')
     else:
@@ -2667,6 +2639,34 @@ def undo_last() -> dict:
 
 UI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui.html")
 EMBEDDED_UI = ""  # filled in by `powertools bundle` to make a single-file build
+EMBEDDED_SCRIPTS = {}  # filled in by `powertools bundle`: name -> shell script text
+
+
+def scripts_dir() -> str:
+    """Where the update / instance shell scripts live. From a git clone they sit
+    next to this file; from the single-file build (or a brew install) they are
+    carried inside it and unpacked to ~/.claude-powertools/scripts, refreshed
+    whenever the text differs so a new powertools brings its new scripts."""
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
+    if os.path.isfile(os.path.join(here, "update-claude.sh")):
+        return here
+    if EMBEDDED_SCRIPTS:
+        d = os.path.join(STATE, "scripts")
+        os.makedirs(d, exist_ok=True)
+        for name, text in EMBEDDED_SCRIPTS.items():
+            f = os.path.join(d, name)
+            try:
+                with open(f) as fh:
+                    if fh.read() == text and os.access(f, os.X_OK):
+                        continue
+            except OSError:
+                pass
+            with open(f, "w") as fh:
+                fh.write(text)
+            os.chmod(f, 0o755)
+        return d
+    return os.path.expanduser("~/claude-powertools/scripts")
+
 
 
 def page() -> str:
@@ -2690,6 +2690,13 @@ def bundle(out: str) -> str:
     marker = 'EMBEDDED_UI = ""  # filled in by `powertools bundle`'
     line = [l for l in code.splitlines() if l.startswith('EMBEDDED_UI = ""')][0]
     code = code.replace(line, "EMBEDDED_UI = " + repr(html_src), 1)
+    sd = os.path.join(os.path.dirname(src), "scripts")
+    scripts = {}
+    for f in sorted(glob.glob(os.path.join(sd, "*.sh"))):
+        with open(f, encoding="utf-8") as fh:
+            scripts[os.path.basename(f)] = fh.read()
+    sline = [l for l in code.splitlines() if l.startswith("EMBEDDED_SCRIPTS = {}")][0]
+    code = code.replace(sline, "EMBEDDED_SCRIPTS = " + repr(scripts), 1)
     out = os.path.abspath(os.path.expanduser(out))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
@@ -2820,6 +2827,8 @@ class Handler(BaseHTTPRequestHandler):
                 "servers": mcp_servers(),
                 "instances": [i for i, _ in instance_roots()],
             })
+        if u.path == "/api/claude_update_status":
+            return self._ok(claude_update_status())
         if u.path == "/api/pick":
             return self._ok(pick_path(qs.get("kind", ["file"])[0]))
         if u.path == "/api/backup_layout":
@@ -2941,6 +2950,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/mcp_toggle":
             return self._ok(toggle_mcp(payload.get("id", ""), bool(payload.get("enable")),
                                        dry=payload.get("dry", False)))
+        if u.path == "/api/claude_update_run":
+            return self._ok(claude_update_run(payload.get("mode", ""), payload.get("dmg", ""), payload.get("name", "")))
         if u.path == "/api/restart_instance":
             return self._ok(restart_instance(payload.get("instance", ""),
                                              dry=payload.get("dry", False)))
@@ -3190,9 +3201,6 @@ def main():
     ni = sub.add_parser("new-instance", help="create another Claude app instance")
     ni.add_argument("name")
     ni.add_argument("--yes", action="store_true", help="actually create it")
-    ni.add_argument("--launcher", action="store_true",
-                    help="1 MB launcher instead of a full copy: follows Claude.app's "
-                         "updates, but notification clicks open the default profile")
 
     ex = sub.add_parser("export", help="export chats to markdown")
     ex.add_argument("--scope", help="bucket key, default everything")
@@ -3430,27 +3438,20 @@ def main():
 
     if cmd == "new-instance":
         try:
-            plan = instance_plan(a.name, "launcher" if a.launcher else "copy")
+            plan = instance_plan(a.name)
         except ValueError as e:
             return print("error:", e)
-        print(f"app:    {plan['app']}{'   (ALREADY EXISTS, will be replaced)' if plan['app_exists'] else ''}")
-        print(f"data:   {plan['data']}{'   (exists, will be reused)' if plan['data_exists'] else ''}")
-        print(f"source: {plan['source']}")
-        print(f"id:     {plan['bundle_id']}")
-        if plan["mode"] == "copy":
-            print("\nthis copies Claude.app (~870 MB) with its own bundle id, so a")
-            print("notification click opens this instance. A copy cannot update itself:")
-            print("after each Claude update run scripts/update-claude.sh, which rebuilds")
-            print("it. Use --launcher for a 1 MB app that follows Claude.app's updates,")
-            print("at the cost of notification clicks opening the default profile.")
-        else:
-            print("\nthis makes a 1 MB launcher that runs the real Claude binary on its own")
-            print("data folder. It is always Claude.app's version, but macOS sees it as")
-            print("Claude.app: notification clicks open the default profile.")
-        print("macOS will ask for your password; Claude PowerTools never sees it.")
+        print(f"launcher: {plan['app']}{'   (ALREADY EXISTS)' if plan['app_exists'] else ''}")
+        print(f"real app: {plan['real']}")
+        print(f"data:     {plan['data']}{'   (exists, will be reused)' if plan['data_exists'] else ''}")
+        print(f"id:       {plan['bundle_id']}")
+        print("\nBuilds a full copy of Claude.app with its own bundle id (~870 MB, so it gets its")
+        print("own menu-bar icon) plus a 1 MB launcher in /Applications. Copies cannot update")
+        print("themselves: after each Claude update run update-claude, which rebuilds them.")
+        print("macOS asks for your password once; Claude PowerTools never sees it.")
         if not a.yes:
             return print("\ndry run. add --yes to create it.")
-        r = create_instance(plan)
+        r = create_instance(plan, terminal=False)
         return print(("done: " if r["ok"] else "failed: ") + r["msg"])
 
     if cmd == "export":

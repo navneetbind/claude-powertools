@@ -299,15 +299,24 @@ table.conn tr:hover td{background:var(--card)}
     <div class="dmeta">each app has its own data folder, its own login and its own chats</div></div>
     <button id="iclose">Close</button></div>
   <div class="dbody" style="background:var(--bg)">
+    <div id="updbox" style="border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-bottom:14px;background:var(--card)">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+        <strong>Update Claude</strong><span class="dmeta" id="updver" style="margin:0">checking…</span></div>
+      <div class="dmeta" id="updmsg" style="margin:6px 0 10px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="updgo">Update now (opens Terminal)</button>
+        <button id="upddmg">Use a downloaded .dmg…</button>
+        <button id="updweb">Open claude.com/download</button>
+        <button id="updfix" class="p" style="display:none">Fix my instances</button>
+        <button id="updrb">Rebuild instance copies</button>
+        <button id="updchk">Check again</button></div>
+      <div class="dmeta" style="margin:8px 0 0">Claude apps cannot update themselves here (each instance is a re-signed copy). This downloads from Anthropic's own release feed, verifies the signature, installs, then rebuilds every instance. It quits all Claude windows and asks for your password once.</div>
+    </div>
     <div id="ilist"></div>
     <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px">
       <div style="font-weight:650;margin-bottom:8px">Add another instance</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <input type="text" id="iname" placeholder="Claude Work 4" style="flex:1;min-width:200px">
-        <select id="imode" title="How to make the instance">
-          <option value="copy" selected>Full copy (notifications open it)</option>
-          <option value="launcher">Launcher, 1 MB (updates itself)</option>
-        </select>
         <button class="p" id="icreate" disabled>Create…</button>
       </div>
       <div id="iplan" style="margin-top:10px"></div>
@@ -1645,36 +1654,63 @@ async function planInstance(){
   $('icreate').disabled=true;
   if(!n){$('iplan').innerHTML='';return}
   const p=await api('/api/instance',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({name:n,dry:true,mode:$('imode').value})});
+    body:JSON.stringify({name:n,dry:true})});
   if(p.error){$('iplan').innerHTML=`<div class="dmeta" style="color:var(--warn)">${esc(p.error)}</div>`;return}
   $('iplan').innerHTML=`<div class="warn">
     <div>App: <code>${esc(p.app)}</code>${p.app_exists?' <strong>(exists, will be replaced)</strong>':''}</div>
     <div style="margin-top:3px">Data: <code>${esc(p.data)}</code>${p.data_exists?' <strong>(exists, will be reused)</strong>':''}</div>
-    <div style="margin-top:3px">Runs: <code>${esc(p.source)}</code></div>
+    <div style="margin-top:3px">Real app: <code>${esc(p.real||'')}</code></div>
     <div style="margin-top:3px">Bundle id: <code>${esc(p.bundle_id||'')}</code></div>
-    <div style="margin-top:7px">${p.mode==='copy'
-      ? `Copies Claude.app (~870 MB) with its own bundle id, so a notification click opens this
-         instance. A copy cannot update itself: after each Claude update run
-         <code>scripts/update-claude.sh</code>, which rebuilds it. First launch asks for
-         &ldquo;Claude Safe Storage&rdquo; &mdash; click Always Allow.`
-      : `A 1 MB launcher that runs the real Claude binary on its own data folder. Always the
-         same version as Claude.app &mdash; but macOS sees it as Claude.app, so notification
-         clicks open the default profile.`}
-    macOS asks for your password itself. Claude PowerTools never sees or stores it.</div></div>`;
+    <div style="margin-top:7px">Builds a full copy of Claude.app (~870 MB) with its own bundle id &mdash; that is
+      what gives this instance its own menu-bar icon and notifications &mdash; plus a 1 MB launcher in
+      /Applications. A copy cannot update itself: after each Claude update use <strong>Update Claude</strong>
+      above, which rebuilds it. A Terminal window opens; macOS asks for your password once and
+      Claude PowerTools never sees it. First launch asks for &ldquo;Claude Safe Storage&rdquo; &mdash; Always Allow.</div></div>`;
   $('icreate').disabled=!p.source_ok;
 }
-$('instbtn').onclick=()=>{$('ovinst').classList.add('on');loadInstances();$('iplan').innerHTML='';$('iname').value=''};
+/* ---------- update Claude ---------- */
+async function loadUpdate(){
+  $('updver').textContent='checking…';$('updmsg').textContent='';
+  const d=await api('/api/claude_update_status');
+  let v=`installed ${d.installed||'?'}`+(d.latest&&d.latest!==d.installed?` · available ${d.latest}`:d.latest?' · up to date':'');
+  $('updver').textContent=v;
+  const lag=(d.copies||[]).filter(c=>c.stale).map(c=>`${c.name} (${c.version||'?'})`);
+  const m=[];
+  if(d.error)m.push('Could not reach the release feed ('+d.error+') — use the .dmg or claude.com/download.');
+  if(d.update_available)m.push(`A new version (${d.latest}) is available.`);
+  if(lag.length)m.push('Instances behind Claude.app: '+lag.join(', ')+' — "Rebuild instance copies" fixes that.');
+  $('updfix').style.display=(d.legacy||[]).length?'':'none';
+  if((d.legacy||[]).length)m.push('Instances in an old layout (no menu-bar icon, broken notifications): '+d.legacy.join(', ')+' — click "Fix my instances".');
+  if(d.quarantined)m.push('Claude.app still carries the download quarantine flag — run scripts/fix-claude-identity.sh.');
+  if(!d.scripts_ok)m.push('Update scripts not found in ~/claude-powertools/scripts.');
+  $('updmsg').textContent=m.join(' ')||'Everything is current.';
+  $('updgo').textContent=d.update_available?`Update to ${d.latest} (opens Terminal)`:'Update now (opens Terminal)';
+}
+async function runUpdate(mode,dmg){
+  if(!confirm('This opens Terminal, quits EVERY Claude window (including any chat you are in), and asks for your password once. Continue?'))return;
+  const r=await api('/api/claude_update_run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode,dmg})});
+  toast(r.msg||(r.ok?'Terminal opened':'failed'));
+}
+$('updgo').onclick=()=>runUpdate('auto');
+$('updrb').onclick=()=>runUpdate('rebuild');
+$('updfix').onclick=()=>runUpdate('fix');
+$('updchk').onclick=loadUpdate;
+$('updweb').onclick=()=>window.open('https://claude.com/download','_blank');
+$('upddmg').onclick=async()=>{
+  const p=await api('/api/pick?kind=dmg');
+  if(p.ok&&p.path)runUpdate('dmg',p.path);
+};
+$('instbtn').onclick=()=>{$('ovinst').classList.add('on');loadInstances();loadUpdate();$('iplan').innerHTML='';$('iname').value=''};
 $('iclose').onclick=()=>$('ovinst').classList.remove('on');
 $('iname').oninput=()=>{clearTimeout(window._i);window._i=setTimeout(planInstance,300)};
-$('imode').onchange=planInstance;
 $('icreate').onclick=async()=>{
   const n=$('iname').value.trim();
-  if(!confirm(`Create a new Claude instance named "${n}"?\n\nmacOS will ask for your password.`))return;
+  if(!confirm(`Create a new Claude instance named "${n}"?\n\nA Terminal window opens and macOS asks for your password once.`))return;
   $('icreate').disabled=true;$('icreate').textContent='Creating…';
   const r=await api('/api/instance',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({name:n,dry:false,mode:$('imode').value})});
+    body:JSON.stringify({name:n,dry:false})});
   $('icreate').textContent='Create…';
-  alert(r.ok?`Done. ${r.msg}\n\nOpen it from /Applications and sign in.`:`Not created:\n${r.msg}`);
+  alert(r.ok?`${r.msg}\n\nWhen it finishes, open it from /Applications and sign in.`:`Not created:\n${r.msg}`);
   loadInstances();
 };
 

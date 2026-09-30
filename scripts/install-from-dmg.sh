@@ -10,7 +10,16 @@ set -u
 DMG="${1:-$HOME/Downloads/Claude.dmg}"
 REQ='anchor apple generic and identifier "com.anthropic.claudefordesktop" and certificate leaf[subject.OU] = Q6L2SF6YDW'
 
-count() { ps -Ao args= | grep -c "^/Applications/Claude.app/Contents/MacOS/Claude "; }
+count() { ps -Axo comm= | grep -cE '^(/Users/[^/]+)?/Applications/([^/]+/)?[^/]+\.app/Contents/MacOS/Claude(-real)?$'; }
+quit_all() {
+  local a id
+  for a in /Applications/*.app "$HOME/Applications/Claude Instances"/*.app; do
+    id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$a/Contents/Info.plist" 2>/dev/null)
+    case "$id" in com.anthropic.claudefordesktop|com.anthropic.claudefordesktop.*)
+      osascript -e "if application id \"$id\" is running then tell application id \"$id\" to quit" >/dev/null 2>&1 || true ;;
+    esac
+  done
+}
 
 echo "Current: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Claude.app/Contents/Info.plist 2>/dev/null)"
 
@@ -31,7 +40,7 @@ echo "    OK: genuine, notarized, version $NEWV"
 
 # --- must be fully quit ---
 echo "==> Quitting every Claude instance..."
-osascript -e 'tell application "Claude" to quit' >/dev/null 2>&1 || true
+quit_all
 for i in $(seq 1 40); do [ "$(count)" -eq 0 ] && break; sleep 1; done
 if [ "$(count)" -ne 0 ]; then
   echo "    STILL RUNNING - close every Claude window (Cmd-Q) and re-run."
@@ -43,7 +52,7 @@ echo "    All instances down."
 STAMP=$(date +%Y%m%d-%H%M%S)
 echo "==> Copying new app in (needs your password)..."
 osascript -e "do shell script \"
-  /usr/bin/ditto '$SRC' '/Applications/Claude.new.app' &&
+  /usr/bin/ditto --noqtn '$SRC' '/Applications/Claude.new.app' && /usr/bin/xattr -dr com.apple.quarantine '/Applications/Claude.new.app' &&
   /bin/mv '/Applications/Claude.app' '/Applications/Claude.old-$STAMP.app' &&
   /bin/mv '/Applications/Claude.new.app' '/Applications/Claude.app'
 \" with administrator privileges" 2>&1 | sed 's/^/    /'

@@ -26,7 +26,7 @@ APP="/Applications/Claude.app"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # Every Claude process: the real app, and each instance copy (Claude-real).
-count() { ps -Axo comm= | grep -cE '^/Applications/[^/]+\.app/Contents/MacOS/Claude(-real)?$'; }
+count() { ps -Axo comm= | grep -cE '^(/Users/[^/]+)?/Applications/([^/]+/)?[^/]+\.app/Contents/MacOS/Claude(-real)?$'; }
 die() { echo "  $1" >&2; exit 1; }
 reclone() {
   [ -x "$HERE/reclone-instances.sh" ] || return 0
@@ -36,7 +36,7 @@ reclone() {
 # Instances have their own bundle ids, so quitting "Claude" by name misses them.
 quit_all() {
   local a id
-  for a in /Applications/*.app; do
+  for a in /Applications/*.app "$HOME/Applications/Claude Instances"/*.app; do
     id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$a/Contents/Info.plist" 2>/dev/null)
     case "$id" in com.anthropic.claudefordesktop|com.anthropic.claudefordesktop.*)
       osascript -e "if application id \"$id\" is running then tell application id \"$id\" to quit" >/dev/null 2>&1 || true ;;
@@ -119,7 +119,7 @@ echo "    all down"
 STAMP=$(date +%Y%m%d-%H%M%S)
 echo "==> Installing (needs your password; $APP is owned by root)..."
 osascript -e "do shell script \"
-  /usr/bin/ditto '$SRC' '/Applications/Claude.new.app' &&
+  /usr/bin/ditto --noqtn '$SRC' '/Applications/Claude.new.app' && /usr/bin/xattr -dr com.apple.quarantine '/Applications/Claude.new.app' &&
   /bin/mv '$APP' '/Applications/Claude.old-$STAMP.app' &&
   /bin/mv '/Applications/Claude.new.app' '$APP'
 \" with administrator privileges" >/dev/null 2>&1 || die "Install failed. $APP untouched."

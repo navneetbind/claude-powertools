@@ -83,33 +83,36 @@ is gone.
 
     powertools instances
     powertools new-instance "Claude Work 4"              # dry run, prints the plan
-    powertools new-instance "Claude Work 4" --yes        # full copy (default)
-    powertools new-instance "Claude Work 4" --launcher   # 1 MB launcher instead
+    powertools new-instance "Claude Work 4" --yes        # build it
 
-Writing to `/Applications` needs admin rights, so macOS shows its own password
-prompt. powertools never sees or stores the password. The Instances panel in the
-web UI does the same with a full preview first and a choice of the two kinds.
+The **Instances** panel in the web UI does the same, and has an **Update Claude**
+section (status, update, install from a `.dmg`, rebuild, and **Fix my instances**
+for instances made by older versions).
 
-### Copy or launcher — you cannot have everything for free
+### How an instance is built (and why)
 
-| | Full copy (default) | Launcher |
-|---|---|---|
-| Notification click opens this instance | yes | no — opens the default profile |
-| Own row in System Settings > Notifications | yes | no — shares Claude's |
-| Updates itself | no — rebuild after each update | yes, always Claude.app's version |
-| Size | ~870 MB | ~1 MB |
+Two bundles per instance:
 
-A notification click activates an app by **bundle id**. A launcher execs the
-real `Claude.app` binary, so to macOS every launcher *is*
-`com.anthropic.claudefordesktop` and every click lands in the default profile.
+- **Real copy** — `~/Applications/Claude Instances/<Name>.app`: a full copy of
+  `Claude.app` (~870 MB) with its own bundle id and display name, re-signed ad-hoc.
+  Its main executable is the genuine Mach-O. **This is what gets a menu-bar icon
+  and notification permission.** An earlier layout renamed the binary to
+  `Claude-real` and put a shell script in its place; macOS then saw a process
+  signed `Claude-real-<hash>` with "Info.plist not bound" and never listed it under
+  System Settings > Menu Bar or gave it notifications. (Verified with a probe app.)
+  Only `CFBundleDisplayName` is changed — renaming `CFBundleName` makes Electron
+  look for the wrong `… Helper.app` and crash at startup.
+- **Launcher** — `/Applications/<Name>.app` (~1 MB, never changes): starts the real
+  copy with `--user-data-dir=<profile>`, or brings it to the front if it is already
+  running. The profile path cannot be baked into the real copy (Electron's
+  asar-integrity fuse is on), and the real copy is hidden from Spotlight/Launchpad
+  because opening it directly starts the **default** profile.
 
-A copy gets its own id — but changing the id means editing `Info.plist`, which is
-sealed, so the copy must be re-signed. Ad-hoc signing pins its designated
-requirement to its own cdhash, so Squirrel can never validate a genuine
-Anthropic update for it: left alone, a copy sits on the build it was cloned
-from, re-downloading and discarding that update every hour. The fix is to
-rebuild copies from `Claude.app` after it updates, which `scripts/update-claude.sh`
-does for you.
+Copies cannot update themselves: ad-hoc signing pins the designated requirement to
+the copy's own cdhash, so Squirrel can never validate a genuine update. Rebuild
+them after `Claude.app` updates — `scripts/update-claude.sh` (or the Update button)
+does. Real copies live in your home folder, so rebuilding them needs no password;
+only the launchers (created once) touch `/Applications`.
 
 The frameworks cannot be shared to save the 870 MB. By symlink, the hardened
 runtime SIGKILLs an ad-hoc binary that loads Anthropic-signed frameworks
@@ -117,8 +120,9 @@ runtime SIGKILLs an ad-hoc binary that loads Anthropic-signed frameworks
 files.
 
 The first launch of a freshly built copy asks for **"Claude Safe Storage"** — click
-Always Allow. Until you do, the app sits with no window. The keychain entry is
-bound to the copy's cdhash, so this comes back once per instance per update.
+Always Allow. Until you do, the app sits with no window. Re-grant Full Disk Access
+after a rebuild (the code identity changed). Notifications from an instance are
+attributed to the main "Claude" row; a click may open the main app.
 
 ## Updating Claude and its instances
 
@@ -132,12 +136,13 @@ anything is installed: the feed's sha256, then strict `codesign`, Team ID
 quits every Claude, swaps the new `Claude.app` in (the old one is kept as
 `Claude.old-<timestamp>.app`), and rebuilds every instance that is now behind.
 Run it with nothing to update and it still brings stale instances up to date.
-Two password prompts: one to install, one to rebuild the instances.
+One password prompt to install `Claude.app`; rebuilding the instances needs none once their launchers exist.
 
-    ./scripts/reclone-instances.sh [--dry-run] [--force]
+    ./scripts/reclone-instances.sh [--dry-run] [--force] [--add "Name"]
 
-Rebuilds instances on their own: any launcher, any copy older than `Claude.app`,
-any copy sharing the real app's bundle id. Keeps each instance's existing bundle
+Rebuilds instances on their own, and converts any older layout (launcher that
+execs `Claude.app`, or copy with a `Claude-real` shim) to the current one. `--add`
+creates a new instance. Keeps each instance's existing bundle
 id so its Notifications row survives, keeps its data folder, and moves the old
 bundle to your Trash. A copy that is running is quit first — Electron reads
 `app.asar` lazily, so replacing a bundle under a live window breaks it.
