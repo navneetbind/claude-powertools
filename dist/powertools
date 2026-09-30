@@ -3042,7 +3042,13 @@ def make_app(dest: str) -> str:
         # env, not sys.executable: the app keeps working even if the python
         # that ran the installer is later removed or upgraded
         fh.write(
-            "#!/bin/sh\nexec /usr/bin/env python3 %s open\n"
+            "#!/bin/sh\n"
+            "# Prefer whichever install is current (brew / installer), so an upgrade or\n"
+            "# a moved copy does not break this app; the path it was built from is the fallback.\n"
+            'for p in /opt/homebrew/bin/powertools /usr/local/bin/powertools "$HOME/.local/bin/powertools"; do\n'
+            '  [ -e "$p" ] && exec /usr/bin/env python3 "$p" open\n'
+            "done\n"
+            "exec /usr/bin/env python3 %s open\n"
             % shlex.quote(os.path.abspath(__file__))
         )
     os.chmod(exe, 0o755)
