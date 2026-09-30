@@ -3031,48 +3031,6 @@ def open_ui(port: int) -> str:
     return "server did not come up; see " + log
 
 
-def make_app(dest: str) -> str:
-    """Build a double-clickable .app that launches Claude PowerTools. No admin needed."""
-    dest = os.path.abspath(os.path.expanduser(dest))
-    macos = os.path.join(dest, "Contents", "MacOS")
-    shutil.rmtree(dest, ignore_errors=True)
-    os.makedirs(macos)
-    exe = os.path.join(macos, "powertools")
-    with open(exe, "w") as fh:
-        # env, not sys.executable: the app keeps working even if the python
-        # that ran the installer is later removed or upgraded
-        fh.write(
-            "#!/bin/sh\n"
-            "# Prefer whichever install is current (brew / installer), so an upgrade or\n"
-            "# a moved copy does not break this app; the path it was built from is the fallback.\n"
-            'for p in /opt/homebrew/bin/powertools /usr/local/bin/powertools "$HOME/.local/bin/powertools"; do\n'
-            '  [ -e "$p" ] && exec /usr/bin/env python3 "$p" open\n'
-            "done\n"
-            "exec /usr/bin/env python3 %s open\n"
-            % shlex.quote(os.path.abspath(__file__))
-        )
-    os.chmod(exe, 0o755)
-    with open(os.path.join(dest, "Contents", "Info.plist"), "w") as fh:
-        fh.write(
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-            '<plist version="1.0"><dict>'
-            "<key>CFBundleName</key><string>Claude PowerTools</string>"
-            "<key>CFBundleDisplayName</key><string>Claude PowerTools</string>"
-            "<key>CFBundleIdentifier</key><string>local.claude-powertools</string>"
-            "<key>CFBundleExecutable</key><string>Claude PowerTools</string>"
-            "<key>CFBundlePackageType</key><string>APPL</string>"
-            "<key>CFBundleShortVersionString</key><string>1.0</string>"
-            "<key>LSUIElement</key><true/>"
-            "<key>NSHighResolutionCapable</key><true/>"
-            "</dict></plist>\n"
-        )
-    subprocess.run(["codesign", "--force", "--deep", "--sign", "-", dest],
-                   capture_output=True)
-    return dest
-
-
 def serve(port: int, open_browser: bool = True):
     print("indexing…", flush=True)
     st = build_index()
@@ -3137,8 +3095,6 @@ def main():
     o = sub.add_parser("open", help="open the UI, starting the server if needed")
     o.add_argument("--port", type=int, default=7788)
 
-    ma = sub.add_parser("make-app", help="build a double-clickable launcher app")
-    ma.add_argument("--out", default="~/Applications/Claude PowerTools.app")
 
     i = sub.add_parser("index", help="rebuild the index")
     i.add_argument("--fts", action="store_true", help="also index message bodies")
@@ -3222,9 +3178,6 @@ def main():
     if cmd == "open":
         return print(open_ui(a.port))
 
-    if cmd == "make-app":
-        p = make_app(a.out)
-        return print(f"built {p}\ndouble-click it, or drag it to your Dock")
 
     if cmd == "index":
         st = build_index(fts=a.fts)

@@ -8,25 +8,19 @@ Grew out of `~/copychat.sh`. Python stdlib only — no npm, no node, no build st
 
 ## Install
 
-No npm, no node, no pip. One file, on the `python3` that ships with macOS.
-The repo is private, so the machine needs to be signed into GitHub as you.
-
-With Homebrew (no git, no PATH setup):
+Homebrew only. No npm, no node, no pip: one Python file on the `python3` that
+ships with macOS.
 
     brew install --cask navneetbind/tap/claude-powertools
+    powertools open
+
+Upgrade with `brew update && brew upgrade claude-powertools`. Remove with
+`brew uninstall --cask claude-powertools` (your data in `~/.claude-powertools` —
+index, account names, reset times, transfer backups — is kept; delete that folder
+to remove it too).
 
 (`brew install navneetbind/tap/claude-powertools` is the formula; it needs current
-Xcode / Command Line Tools, the cask does not.) Or from a clone:
-
-    git clone https://github.com/navneetbind/claude-powertools.git ~/claude-powertools
-    cd ~/claude-powertools && ./install.sh
-
-That puts a single executable at `~/.local/bin/powertools`. Then:
-
-    powertools
-
-If `powertools` is not found, `~/.local/bin` is not on your PATH yet. The
-installer prints the one line to add to `~/.zshrc`.
+Xcode / Command Line Tools, the cask does not.)
 
 ## Uninstall
 
