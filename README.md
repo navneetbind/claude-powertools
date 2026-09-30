@@ -11,11 +11,17 @@ Grew out of `~/copychat.sh`. Python stdlib only — no npm, no node, no build st
 No npm, no node, no pip. One file, on the `python3` that ships with macOS.
 The repo is private, so the machine needs to be signed into GitHub as you.
 
+With Homebrew (no git, no PATH setup):
+
+    brew install --cask navneetbind/tap/claude-powertools
+
+(`brew install navneetbind/tap/claude-powertools` is the formula; it needs current
+Xcode / Command Line Tools, the cask does not.) Or from a clone:
+
     git clone https://github.com/navneetbind/claude-powertools.git ~/claude-powertools
     cd ~/claude-powertools && ./install.sh
 
-That puts a single executable at `~/.local/bin/powertools` and a double-click
-app at `~/Applications/Claude PowerTools.app`. Then:
+That puts a single executable at `~/.local/bin/powertools`. Then:
 
     powertools
 
