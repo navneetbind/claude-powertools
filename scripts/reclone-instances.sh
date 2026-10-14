@@ -244,6 +244,42 @@ for i in "${!NAMES[@]}"; do
   profile_open "${DATAS[$i]}" && OPEN+=("$name")
 done
 
+# A Dock icon pinned to a REAL copy starts Claude with no profile (the main
+# account opens instead). The Dock follows moved apps, so repair any such pin to
+# point at the launcher in /Applications. Backs the Dock settings up first.
+fix_dock_pins() {
+  command -v python3 >/dev/null 2>&1 || return 0
+  local bk="$HOME/.claude-powertools/dock-backup-$(date +%Y%m%d-%H%M%S).plist"
+  mkdir -p "$HOME/.claude-powertools"
+  defaults export com.apple.dock "$bk" 2>/dev/null || return 0
+  if python3 - "$bk" "$bk.new" <<'PY'
+import plistlib, sys, urllib.parse
+d = plistlib.load(open(sys.argv[1], "rb")); n = 0
+for key in ("persistent-apps", "persistent-others"):
+    for it in d.get(key, []):
+        td = it.get("tile-data", {}); fd = td.get("file-data", {})
+        url = fd.get("_CFURLString", "")
+        if "Claude%20PowerTools/Instances" in url or "Claude PowerTools/Instances" in url:
+            name = urllib.parse.unquote(url.rstrip("/").split("/")[-1])
+            fd["_CFURLString"] = "file:///Applications/" + urllib.parse.quote(name) + "/"
+            bid = td.get("bundle-identifier", "")
+            if not bid.endswith(".launcher"):
+                td["bundle-identifier"] = bid + ".launcher"
+            n += 1
+if n:
+    plistlib.dump(d, open(sys.argv[2], "wb"))
+sys.exit(0 if n else 1)
+PY
+  then
+    defaults import com.apple.dock "$bk.new" && killall Dock 2>/dev/null
+    echo "  Dock: re-pointed an icon that opened the wrong profile (backup: $bk)"
+  else
+    rm -f "$bk"
+  fi
+  rm -f "$bk.new"
+}
+fix_dock_pins
+
 cat <<'MSG'
 
 First launch of each rebuilt instance:
