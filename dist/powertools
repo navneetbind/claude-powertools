@@ -489,8 +489,8 @@ def instances() -> list[dict]:
     out = []
     seen = set()
     for d in sorted(glob.glob(os.path.join(SUPPORT, "*laude*"))):
-        if not os.path.isdir(d):
-            continue
+        if not os.path.isdir(d) or os.path.basename(d) == "Claude PowerTools":
+            continue    # our own folder (holds the real copies), not a Claude profile
         key = os.path.normpath(d)
         seen.add(key)
         owners = by_data.get(key, [])
