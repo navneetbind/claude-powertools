@@ -5,11 +5,11 @@
 #   ./reclone-instances.sh             rebuild only what needs it
 #   ./reclone-instances.sh --force     rebuild every instance
 #   ./reclone-instances.sh --dry-run   say what would happen, change nothing
-#   ./reclone-instances.sh --add "Claude Work 7"   create a brand-new instance
+#   ./reclone-instances.sh --add "Claude Work 7" [--add "Name 2" ...]   create instances
 #
 # Each instance is TWO bundles:
 #
-#   REAL COPY   ~/Applications/Claude Instances/<Name>.app
+#   REAL COPY   ~/Library/Application Support/Claude PowerTools/Instances/<Name>.app
 #     A full copy of Claude.app, own bundle id + display name, re-signed ad-hoc.
 #     Its main executable is the genuine Mach-O (NOT a shell shim), so macOS
 #     sees a process whose signature matches its bundle. That is what lets it
@@ -34,21 +34,21 @@
 set -u
 SRC="/Applications/Claude.app"
 SHARED_ID="com.anthropic.claudefordesktop"
-REALDIR="$HOME/Applications/Claude Instances"
-FORCE=0; DRY=0; ADD=""
+REALDIR="$HOME/Library/Application Support/Claude PowerTools/Instances"
+FORCE=0; DRY=0; ADDS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --force) FORCE=1 ;;
     --dry-run|-n) DRY=1 ;;
-    --add) shift; ADD="${1:-}"; [ -n "$ADD" ] || { echo "--add needs a name" >&2; exit 2; } ;;
+    --add) shift; [ -n "${1:-}" ] || { echo "--add needs a name" >&2; exit 2; }
+           printf '%s' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9 _-]{0,48}$' \
+             || { echo "name must be letters, numbers, spaces, - or _ (max 49)" >&2; exit 2; }
+           ADDS+=("$1") ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
 done
-if [ -n "$ADD" ]; then
-  printf '%s' "$ADD" | grep -qE '^[A-Za-z0-9][A-Za-z0-9 _-]{0,48}$' \
-    || { echo "name must be letters, numbers, spaces, - or _ (max 49)" >&2; exit 2; }
-fi
+
 
 PB=/usr/libexec/PlistBuddy
 ME=$(id -un)
@@ -87,7 +87,8 @@ for app in /Applications/*.app; do
   why=""; nr=0; nl=0
   # Anything that is not the current launcher (copy with a Claude-real shim, or
   # the older 1 MB launcher that execs Claude.app directly) gets converted.
-  if ! grep -q 'open -n' "$shim"; then nl=1; why="old layout (will convert)"; fi
+  if ! grep -q 'open -n' "$shim"; then nl=1; why="old layout (will convert)"
+  elif ! grep -qF "REAL=\"$real\"" "$shim"; then nl=1; why="launcher points at an old location"; fi
   if [ ! -d "$real" ]; then nr=1; why="${why:+$why, }no real copy yet"
   else
     v=$($PB -c "Print :CFBundleShortVersionString" "$real/Contents/Info.plist" 2>/dev/null)
@@ -103,15 +104,15 @@ for app in /Applications/*.app; do
   fi
 done
 
-if [ -n "$ADD" ]; then
+for ADD in ${ADDS[@]+"${ADDS[@]}"}; do
   if [ -d "/Applications/$ADD.app" ]; then
-    echo "/Applications/$ADD.app already exists - pick another name, or run without --add to repair it." >&2; exit 1
+    echo "/Applications/$ADD.app already exists - skipping (run without --add to repair it)." >&2; continue
   fi
   NAMES+=("$ADD")
   DATAS+=("$HOME/Library/Application Support/$(printf '%s' "$ADD" | sed -E 's/[^A-Za-z0-9]+/-/g; s/^-+//; s/-+$//')")
   IDS+=("$SHARED_ID.$(slug "$ADD")"); NEED_REAL+=(1); NEED_LAUNCH+=(1); WHY+=("new instance")
   echo "  create   $ADD  - new instance"
-fi
+done
 
 if [ ${#NAMES[@]} -eq 0 ]; then
   echo "All instances current. Nothing to do."
@@ -251,7 +252,7 @@ First launch of each rebuilt instance:
   - System Settings > Notifications and > Menu Bar: each instance is its own
     row named after the instance. A new row may start OFF; turn it on.
   - Privacy > Full Disk Access: re-add the instance if you had granted it (its
-    code identity changed). Real copies are in ~/Applications/Claude Instances.
+    code identity changed). Real copies are in ~/Library/Application Support/Claude PowerTools/Instances.
 Previous bundles are in your Trash.
 MSG
 if [ ${#OPEN[@]} -gt 0 ]; then

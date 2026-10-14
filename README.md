@@ -93,7 +93,7 @@ for instances made by older versions).
 
 Two bundles per instance:
 
-- **Real copy** — `~/Applications/Claude Instances/<Name>.app`: a full copy of
+- **Real copy** — `~/Library/Application Support/Claude PowerTools/Instances/<Name>.app`: a full copy of
   `Claude.app` (~870 MB) with its own bundle id and display name, re-signed ad-hoc.
   Its main executable is the genuine Mach-O. **This is what gets a menu-bar icon
   and notification permission.** An earlier layout renamed the binary to
@@ -105,7 +105,7 @@ Two bundles per instance:
 - **Launcher** — `/Applications/<Name>.app` (~1 MB, never changes): starts the real
   copy with `--user-data-dir=<profile>`, or brings it to the front if it is already
   running. The profile path cannot be baked into the real copy (Electron's
-  asar-integrity fuse is on), and the real copy is hidden from Spotlight/Launchpad
+  asar-integrity fuse is on), and the real copy lives under Application Support, out of Spotlight/Launchpad
   because opening it directly starts the **default** profile.
 
 Copies cannot update themselves: ad-hoc signing pins the designated requirement to

@@ -10,10 +10,10 @@ set -u
 DMG="${1:-$HOME/Downloads/Claude.dmg}"
 REQ='anchor apple generic and identifier "com.anthropic.claudefordesktop" and certificate leaf[subject.OU] = Q6L2SF6YDW'
 
-count() { ps -Axo comm= | grep -cE '^(/Users/[^/]+)?/Applications/([^/]+/)?[^/]+\.app/Contents/MacOS/Claude(-real)?$'; }
+count() { ps -Axo comm= | grep -cE '^/(Applications|Users/[^/]+/(Applications|Library/Application Support/Claude PowerTools/Instances))/([^/]+/)?[^/]+\.app/Contents/MacOS/Claude(-real)?$'; }
 quit_all() {
   local a id
-  for a in /Applications/*.app "$HOME/Applications/Claude Instances"/*.app; do
+  for a in /Applications/*.app "$HOME/Library/Application Support/Claude PowerTools/Instances"/*.app; do
     id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$a/Contents/Info.plist" 2>/dev/null)
     case "$id" in com.anthropic.claudefordesktop|com.anthropic.claudefordesktop.*)
       osascript -e "if application id \"$id\" is running then tell application id \"$id\" to quit" >/dev/null 2>&1 || true ;;

@@ -532,7 +532,7 @@ def instance_plan(name: str, mode: str = "instance") -> dict:
 
     An instance is two bundles (built by scripts/reclone-instances.sh --add):
     a real, unshimmed copy of Claude.app with its own bundle id in
-    ~/Applications/Claude Instances (this is what gets a menu-bar icon and
+    ~/Library/Application Support/Claude PowerTools/Instances (this is what gets a menu-bar icon and
     notifications), and a ~1 MB launcher in /Applications that starts it on its
     own profile. Copies cannot update themselves: after each Claude update run
     scripts/update-claude.sh (or the Update button), which rebuilds them.
@@ -549,7 +549,7 @@ def instance_plan(name: str, mode: str = "instance") -> dict:
         "name": name,
         "mode": "instance",
         "app": app,
-        "real": os.path.join(HOME, "Applications", "Claude Instances", name + ".app"),
+        "real": os.path.join(SUPPORT, "Claude PowerTools", "Instances", name + ".app"),
         "data": data,
         "source": src,
         "bundle_id": bundle_id,
@@ -1104,6 +1104,24 @@ def instance_app(instance: str) -> str:
     return ""
 
 
+def instance_pids(instance: str) -> list:
+    """Main-process pids of the Claude running on this instance's data folder.
+    A copy started without --user-data-dir runs on the default folder, so it
+    counts as "Claude" here - which is exactly what it is touching."""
+    data = os.path.normpath(os.path.join(SUPPORT, instance))
+    default = os.path.normpath(os.path.join(SUPPORT, "Claude"))
+    r = subprocess.run(["ps", "-Axww", "-o", "pid=,args="], capture_output=True, text=True)
+    out = []
+    for line in r.stdout.splitlines():
+        pid, _, args = line.strip().partition(" ")
+        if "--type=" in args or not re.match(r".+?\.app/Contents/MacOS/Claude( --|$)", args):
+            continue
+        d = re.search(r"--user-data-dir=(.+?)(?= --|$)", args)
+        if os.path.normpath(d.group(1) if d else default) == data:
+            out.append(int(pid))
+    return out
+
+
 def restart_instance(instance: str, dry: bool = True) -> dict:
     """Quit a Claude app and reopen it — the step a moved/toggled config needs to
     take effect. macOS `quit` is a request the app can refuse if it has a blocking
@@ -1115,8 +1133,23 @@ def restart_instance(instance: str, dry: bool = True) -> dict:
     name = os.path.splitext(os.path.basename(app))[0]
     if dry:
         return {"ok": True, "app": app, "name": name}
-    subprocess.run(["osascript", "-e", f'quit app "{name}"'], capture_output=True, text=True)
-    time.sleep(1.5)
+    # Quit by pid, not `quit app "<name>"`: every copy calls itself "Claude", so
+    # a name hits the wrong app. And wait until it is really gone - reopening a
+    # copy that is still shutting down makes the launcher `open -b` it, and once
+    # it exits macOS starts it bare, on the DEFAULT profile (logged out / wrong
+    # account).
+    for pid in instance_pids(instance):
+        try:
+            os.kill(pid, 15)  # SIGTERM = a normal Electron quit
+        except OSError:
+            pass
+    deadline = time.time() + 30
+    while instance_pids(instance) and time.time() < deadline:
+        time.sleep(0.5)
+    if instance_pids(instance):
+        return {"ok": False, "name": name,
+                "msg": name + " did not quit (a dialog open?) - quit it with Cmd+Q and open it again"}
+    time.sleep(1)
     r = subprocess.run(["open", "-a", app], capture_output=True, text=True)
     ok = r.returncode == 0
     return {"ok": ok, "name": name,
@@ -1241,7 +1274,7 @@ def claude_update_status() -> dict:
     except Exception as e:
         err = str(e)[:160]
     copies = []
-    base = os.path.expanduser("~/Applications/Claude Instances")
+    base = os.path.expanduser("~/Library/Application Support/Claude PowerTools/Instances")
     for a in sorted(glob.glob(os.path.join(base, "*.app"))):
         v = subprocess.run(["/usr/libexec/PlistBuddy", "-c",
                             "Print :CFBundleShortVersionString",
