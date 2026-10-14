@@ -46,6 +46,8 @@ fi
 echo "    sha256 $SHA"
 
 echo "==> Updating the tap"
+# the tap also carries other casks (e.g. verse) that get pushed from elsewhere
+[ "$DRY" = 1 ] || git -C "$TAP" pull --rebase -q origin main
 if [ "$DRY" = 0 ]; then
   VER="$VER" SHA="$SHA" python3 - "$TAP" <<'PY'
 import os, re, sys
