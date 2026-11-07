@@ -41,6 +41,9 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+VERSION = "1.0.4"
+TAP_CASK = "https://raw.githubusercontent.com/navneetbind/homebrew-tap/main/Casks/claude-powertools.rb"
+
 HOME = os.path.expanduser("~")
 SUPPORT = os.path.join(HOME, "Library", "Application Support")
 TRANSCRIPTS = os.path.join(HOME, ".claude", "projects")
@@ -50,6 +53,7 @@ LABELS = os.path.join(STATE, "labels.json")
 BACKUPS = os.path.join(STATE, "backups")
 UNDO = os.path.join(STATE, "undo.json")
 URLFILE = os.path.join(STATE, "url.txt")
+UPDATES = os.path.join(STATE, "update-check.json")
 
 # ---------------------------------------------------------------- discovery
 
@@ -1310,6 +1314,83 @@ def claude_update_status() -> dict:
             "quarantined": quarantined, "copies": copies,
             "scripts_ok": os.path.isfile(os.path.join(scripts_dir(), "update-claude.sh")),
             "legacy": legacy_instances()}
+
+
+def _vtuple(v: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3])
+
+
+def pt_update_status() -> dict:
+    """This copy's version vs the one the Homebrew tap offers, which is what
+    `brew upgrade` would install."""
+    import urllib.request
+    latest, err = "", ""
+    try:
+        with urllib.request.urlopen(TAP_CASK, timeout=8) as r:
+            m = re.search(r'version "([0-9.]+)"', r.read().decode("utf-8", "ignore"))
+        latest = m.group(1) if m else ""
+    except Exception as e:
+        err = str(e)[:160]
+    return {"installed": VERSION, "latest": latest, "error": err,
+            "update_available": bool(latest) and _vtuple(latest) > _vtuple(VERSION),
+            "via_brew": uninstall_info()["via_brew"]}
+
+
+def updates(fresh: bool = False) -> dict:
+    """Both update checks for the banner, asked at most every 6 hours."""
+    try:
+        with open(UPDATES) as fh:
+            c = json.load(fh)
+        if not fresh and time.time() - c["at"] < 6 * 3600 and c["powertools"]["installed"] == VERSION:
+            return c
+    except Exception:
+        pass
+    c = {"at": time.time(), "powertools": pt_update_status()}
+    try:
+        cu = claude_update_status()
+        c["claude"] = {k: cu[k] for k in ("installed", "latest", "error", "update_available")}
+        c["claude"]["stale_copies"] = [x["name"] for x in cu["copies"] if x["stale"]]
+    except Exception as e:
+        c["claude"] = {"error": str(e)[:160], "update_available": False, "stale_copies": []}
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        with open(UPDATES, "w") as fh:
+            json.dump(c, fh)
+    except Exception:
+        pass
+    return c
+
+
+def pt_update_run() -> dict:
+    """Open Terminal running `brew upgrade` for PowerTools. Only if that works:
+    stop this server and start the new copy, which opens a fresh tab."""
+    info = uninstall_info()
+    if not info["brew"] or not info["via_brew"]:
+        return {"ok": False,
+                "msg": "This copy was not installed with Homebrew. Update it with "
+                       "git pull in ~/claude-powertools."}
+    brew = shlex.quote(info["brew"])
+    os.makedirs(STATE, exist_ok=True)
+    f = os.path.join(STATE, "run-pt-update.command")
+    lines = ["#!/bin/bash", "clear",
+             f"{brew} update && {brew} upgrade --cask claude-powertools",
+             "rc=$?",
+             'if [ $rc -ne 0 ]; then echo; echo "brew could not update it (exit $rc). Nothing else was changed."; read -n1 -s -p "Press any key..."; exit $rc; fi',
+             "pkill -f '[/ ]powertools(\\.py)?( serve.*)?$' 2>/dev/null; sleep 1",
+             f"\"$({brew} --prefix)/bin/powertools\" open",
+             'echo; echo "PowerTools is updated and open again. You can close this window."',
+             "read -n1 -s -p 'Press any key...'"]
+    with open(f, "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    os.chmod(f, 0o755)
+    try:
+        os.remove(UPDATES)
+    except OSError:
+        pass
+    r = subprocess.run(["open", "-a", "Terminal", f], capture_output=True, text=True)
+    return {"ok": r.returncode == 0,
+            "msg": "Terminal opened. It updates PowerTools and opens it again."
+            if r.returncode == 0 else (r.stderr or "could not open Terminal").strip()[:200]}
 
 
 def claude_update_run(mode: str, dmg: str = "", name: str = "") -> dict:
@@ -3036,6 +3117,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._ok(uninstall_info())
         if u.path == "/api/claude_update_status":
             return self._ok(claude_update_status())
+        if u.path == "/api/updates":
+            return self._ok(updates(qs.get("fresh", ["0"])[0] == "1"))
         if u.path == "/api/pick":
             return self._ok(pick_path(qs.get("kind", ["file"])[0]))
         if u.path == "/api/backup_layout":
@@ -3157,6 +3240,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/mcp_toggle":
             return self._ok(toggle_mcp(payload.get("id", ""), bool(payload.get("enable")),
                                        dry=payload.get("dry", False)))
+        if u.path == "/api/pt_update_run":
+            return self._ok(pt_update_run())
         if u.path == "/api/uninstall_run":
             return self._ok(uninstall_run(bool(payload.get("purge"))))
         if u.path == "/api/claude_update_run":
@@ -3335,6 +3420,7 @@ def main():
     m.add_argument("--force", action="store_true", help="transfer despite account warnings")
 
     sub.add_parser("undo", help="reverse the last move")
+    sub.add_parser("version", help="this version, and whether a newer one is out")
     mem = sub.add_parser("memory", help="what Claude has written down about you")
     mem.add_argument("query", nargs="?", help="filter by name, description or body")
     mem.add_argument("--show", help="print one memory in full, by name")
@@ -3452,6 +3538,15 @@ def main():
         build_index()
         print(f"\ndone: {res['moved']} chat(s)\nbackup: {res['backup']}")
         print("quit Claude fully (Cmd+Q) and reopen to see them")
+        return
+
+    if cmd == "version":
+        st = pt_update_status()
+        print(f"Claude PowerTools {VERSION}")
+        if st["update_available"]:
+            print(f"{st['latest']} is out: brew update && brew upgrade claude-powertools")
+        elif st["latest"]:
+            print("up to date")
         return
 
     if cmd == "undo":

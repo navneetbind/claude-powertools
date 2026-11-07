@@ -97,6 +97,9 @@ details.step>summary::before{content:"›";display:inline-block;transition:trans
 details.step[open]>summary::before{transform:rotate(90deg)}
 .stepname{font-family:ui-monospace,Menlo,monospace;color:var(--fg);font-size:12.5px}
 details.step pre{margin:0;padding:9px 12px;border-top:1px solid var(--line);white-space:pre-wrap;word-break:break-word;font:12px/1.55 ui-monospace,Menlo,monospace;max-height:340px;overflow:auto;color:var(--dim)}
+#updbar{padding:8px 14px;border-bottom:1px solid var(--line);background:var(--sel);font-size:13px}
+#updbar .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:3px 0}
+#updbar .row span{flex:1;min-width:200px}
 .warn{background:var(--sel);border:1px solid var(--acc);padding:9px 11px;border-radius:8px;font-size:13px;margin-bottom:12px}
 .shot{display:block;max-width:min(100%,340px);max-height:200px;width:auto;height:auto;object-fit:contain;object-position:left top;border:1px solid var(--line);border-radius:9px;margin:6px 0;cursor:zoom-in;background:var(--code-bg)}
 .shot:hover{border-color:var(--acc)}
@@ -179,6 +182,7 @@ table.conn tr:hover td{background:var(--card)}
 <div id="wrap">
 <aside><h1>Claude PowerTools</h1><div class="sub" id="tot">loading…</div><div id="tree"></div><div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px"><button id="usebtn" style="width:100%;margin-bottom:6px">Usage…</button><button id="membtn" style="width:100%;margin-bottom:6px">What Claude remembers…</button><button id="mcpbtn" style="width:100%;margin-bottom:6px">MCP connections…</button><button id="bkbtn" style="width:100%;margin-bottom:6px">Backup &amp; move Mac…</button><button id="setbtn" style="width:100%;margin-bottom:6px">Claude settings…</button><button id="instbtn" style="width:100%;margin-bottom:14px">Instances…</button><button id="unbtn" style="width:100%;opacity:.7">Uninstall PowerTools…</button></div></aside>
 <main>
+<div id="updbar" hidden></div>
 <header>
   <input type="search" id="q" placeholder="Search titles…  (/ to focus)">
   <label class="ck"><input type="checkbox" id="fts"> message text</label>
@@ -1687,6 +1691,32 @@ $('unbtn').onclick=async()=>{
   const r=await api('/api/uninstall_run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({purge})});
   toast(r.msg||(r.ok?'Terminal opened':'failed'));
 };
+/* ---------- update banner ---------- */
+const skipKey=k=>'pt-skip-'+k;
+function skipped(k,v){try{return localStorage.getItem(skipKey(k))===v}catch(e){return false}}
+function skip(k,v){try{localStorage.setItem(skipKey(k),v)}catch(e){}}
+async function checkUpdates(fresh){
+  let d;try{d=await api('/api/updates'+(fresh?'?fresh=1':''))}catch(e){return}
+  const rows=[],pt=d.powertools||{},cl=d.claude||{};
+  if(pt.update_available&&!skipped('pt',pt.latest))
+    rows.push(`<div class="row"><span><b>PowerTools ${esc(pt.latest)}</b> is out. You have ${esc(pt.installed)}.</span>
+      <button class="p" data-u="pt">Update PowerTools</button><button data-skip="pt" data-v="${esc(pt.latest)}">Later</button></div>`);
+  if(cl.update_available&&!skipped('claude',cl.latest))
+    rows.push(`<div class="row"><span><b>Claude ${esc(cl.latest)}</b> is out. This Mac has ${esc(cl.installed)}.</span>
+      <button class="p" data-u="claude">Update Claude</button><button data-skip="claude" data-v="${esc(cl.latest)}">Later</button></div>`);
+  else if((cl.stale_copies||[]).length&&!skipped('copies',cl.installed+':'+cl.stale_copies.join(',')))
+    rows.push(`<div class="row"><span>Some Claude instances are older than Claude.app: ${esc(cl.stale_copies.join(', '))}.</span>
+      <button class="p" data-u="rebuild">Update instances</button><button data-skip="copies" data-v="${esc(cl.installed+':'+cl.stale_copies.join(','))}">Later</button></div>`);
+  const bar=$('updbar');bar.innerHTML=rows.join('');bar.hidden=!rows.length;
+  bar.querySelectorAll('[data-skip]').forEach(b=>b.onclick=()=>{skip(b.dataset.skip,b.dataset.v);checkUpdates()});
+  bar.querySelectorAll('[data-u]').forEach(b=>b.onclick=async()=>{
+    if(b.dataset.u==='pt'){
+      if(!confirm('This opens Terminal, updates PowerTools with Homebrew, then reopens it in a new tab. This tab stops working once it restarts. Continue?'))return;
+      const r=await api('/api/pt_update_run',{method:'POST'});toast(r.msg);
+    } else runUpdate(b.dataset.u==='claude'?'auto':'rebuild');
+  });
+}
+
 /* ---------- update Claude ---------- */
 async function loadUpdate(){
   $('updver').textContent='checking…';$('updmsg').textContent='';
@@ -1751,4 +1781,5 @@ $('exportsel').onclick=async()=>{
   toast(`Exported ${r.written} chat(s) to ${r.dir}`);
 };
 boot();
+checkUpdates();
 </script></body></html>

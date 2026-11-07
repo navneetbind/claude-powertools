@@ -24,10 +24,11 @@ git rev-parse "v$VER" >/dev/null 2>&1 && { echo "tag v$VER already exists" >&2; 
 [ -d "$TAP/.git" ] || { echo "tap not found at $TAP" >&2; exit 1; }
 [ -z "$(git -C "$TAP" status --porcelain)" ] || { echo "tap has uncommitted changes" >&2; exit 1; }
 
-echo "==> Rebuilding dist/powertools"
+echo "==> Setting VERSION = $VER and rebuilding dist/powertools"
+run sed -i '' -E "s/^VERSION = \"[0-9.]+\"/VERSION = \"$VER\"/" powertools.py
 run python3 powertools.py bundle --out dist/powertools
-if [ "$DRY" = 0 ] && [ -n "$(git status --porcelain dist/powertools)" ]; then
-  git add dist/powertools && git commit -q -m "Rebuild single-file build for v$VER"
+if [ "$DRY" = 0 ] && [ -n "$(git status --porcelain dist/powertools powertools.py)" ]; then
+  git add dist/powertools powertools.py && git commit -q -m "Release v$VER"
 fi
 
 echo "==> Tagging v$VER and pushing"
