@@ -3005,14 +3005,16 @@ def bundle(out: str) -> str:
         html_src = fh.read()
     marker = 'EMBEDDED_UI = ""  # filled in by `powertools bundle`'
     line = [l for l in code.splitlines() if l.startswith('EMBEDDED_UI = ""')][0]
-    code = code.replace(line, "EMBEDDED_UI = " + repr(html_src), 1)
+    # ascii(), not repr(): macOS's own python3 (3.9) cannot read a line this long
+    # that holds non-ASCII characters
+    code = code.replace(line, "EMBEDDED_UI = " + ascii(html_src), 1)
     sd = os.path.join(os.path.dirname(src), "scripts")
     scripts = {}
     for f in sorted(glob.glob(os.path.join(sd, "*.sh"))):
         with open(f, encoding="utf-8") as fh:
             scripts[os.path.basename(f)] = fh.read()
     sline = [l for l in code.splitlines() if l.startswith("EMBEDDED_SCRIPTS = {}")][0]
-    code = code.replace(sline, "EMBEDDED_SCRIPTS = " + repr(scripts), 1)
+    code = code.replace(sline, "EMBEDDED_SCRIPTS = " + ascii(scripts), 1)
     out = os.path.abspath(os.path.expanduser(out))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:

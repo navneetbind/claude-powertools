@@ -27,6 +27,12 @@ git rev-parse "v$VER" >/dev/null 2>&1 && { echo "tag v$VER already exists" >&2; 
 echo "==> Setting VERSION = $VER and rebuilding dist/powertools"
 run sed -i '' -E "s/^VERSION = \"[0-9.]+\"/VERSION = \"$VER\"/" powertools.py
 run python3 powertools.py bundle --out dist/powertools
+# The cask runs on whatever python3 the Mac has, often macOS's own 3.9.
+if [ "$DRY" = 0 ]; then
+  for py in /usr/bin/python3 python3; do
+    "$py" dist/powertools version >/dev/null 2>&1 || { echo "dist/powertools does not start on $py ($("$py" --version 2>&1))" >&2; exit 1; }
+  done
+fi
 if [ "$DRY" = 0 ] && [ -n "$(git status --porcelain dist/powertools powertools.py)" ]; then
   git add dist/powertools powertools.py && git commit -q -m "Release v$VER"
 fi
