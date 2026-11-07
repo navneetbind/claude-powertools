@@ -42,7 +42,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 TAP_CASK = "https://raw.githubusercontent.com/navneetbind/homebrew-tap/main/Casks/claude-powertools.rb"
 
 HOME = os.path.expanduser("~")
