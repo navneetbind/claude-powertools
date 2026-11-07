@@ -1703,7 +1703,7 @@ async function checkUpdates(fresh){
       <button class="p" data-u="pt">Update PowerTools</button><button data-skip="pt" data-v="${esc(pt.latest)}">Later</button></div>`);
   if(cl.update_available&&!skipped('claude',cl.latest))
     rows.push(`<div class="row"><span><b>Claude ${esc(cl.latest)}</b> is out. This Mac has ${esc(cl.installed)}.</span>
-      <button class="p" data-u="claude">Update Claude</button><button data-skip="claude" data-v="${esc(cl.latest)}">Later</button></div>`);
+      <button class="p" data-u="claude">Update Claude from DMG</button><button data-skip="claude" data-v="${esc(cl.latest)}">Later</button></div>`);
   else if((cl.stale_copies||[]).length&&!skipped('copies',cl.installed+':'+cl.stale_copies.join(',')))
     rows.push(`<div class="row"><span>Some Claude instances are older than Claude.app: ${esc(cl.stale_copies.join(', '))}.</span>
       <button class="p" data-u="rebuild">Update instances</button><button data-skip="copies" data-v="${esc(cl.installed+':'+cl.stale_copies.join(','))}">Later</button></div>`);
@@ -1713,7 +1713,12 @@ async function checkUpdates(fresh){
     if(b.dataset.u==='pt'){
       if(!confirm('This opens Terminal, updates PowerTools with Homebrew, then reopens it in a new tab. This tab stops working once it restarts. Continue?'))return;
       const r=await api('/api/pt_update_run',{method:'POST'});toast(r.msg);
-    } else runUpdate(b.dataset.u==='claude'?'auto':'rebuild');
+    } else if(b.dataset.u==='claude'){
+      window.open('https://claude.com/download','_blank');
+      toast('Download Claude, then pick the .dmg in the window that opens.');
+      const p=await api('/api/pick?kind=dmg');
+      if(p.ok&&p.path)runUpdate('dmg',p.path);
+    } else runUpdate('rebuild');
   });
 }
 

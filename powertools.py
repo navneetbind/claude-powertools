@@ -27,6 +27,7 @@ import glob
 import html
 import json
 import os
+import plistlib
 import re
 import secrets
 import shlex
@@ -1336,16 +1337,35 @@ def pt_update_status() -> dict:
             "via_brew": uninstall_info()["via_brew"]}
 
 
+def local_claude_versions() -> list:
+    """Claude.app and every instance copy with its version. Reading these is
+    cheap, so any update on this Mac shows at once instead of after the cache."""
+    apps = ["/Applications/Claude.app"] + sorted(glob.glob(os.path.join(
+        HOME, "Library", "Application Support", "Claude PowerTools", "Instances", "*.app")))
+    out = []
+    for a in apps:
+        try:
+            with open(os.path.join(a, "Contents", "Info.plist"), "rb") as fh:
+                v = plistlib.load(fh).get("CFBundleShortVersionString", "")
+        except Exception:
+            v = ""
+        out.append([a, v])
+    return out
+
+
 def updates(fresh: bool = False) -> dict:
-    """Both update checks for the banner, asked at most every 6 hours."""
+    """Both update checks for the banner. The feeds are asked at most every 6
+    hours; a change to any Claude version on this Mac asks again at once."""
+    here = local_claude_versions()
     try:
         with open(UPDATES) as fh:
             c = json.load(fh)
-        if not fresh and time.time() - c["at"] < 6 * 3600 and c["powertools"]["installed"] == VERSION:
+        if (not fresh and time.time() - c["at"] < 6 * 3600
+                and c["powertools"]["installed"] == VERSION and c.get("local") == here):
             return c
     except Exception:
         pass
-    c = {"at": time.time(), "powertools": pt_update_status()}
+    c = {"at": time.time(), "local": here, "powertools": pt_update_status()}
     try:
         cu = claude_update_status()
         c["claude"] = {k: cu[k] for k in ("installed", "latest", "error", "update_available")}
@@ -1880,7 +1900,8 @@ def pick_path(kind: str = "file") -> dict:
     belongs on the desktop rather than being a path the user has to type."""
     if kind == "dmg":
         script = ('POSIX path of (choose file with prompt '
-                  '"Pick the Claude .dmg you downloaded" of type {"public.disk-image", "com.apple.disk-image-udif"})')
+                  '"Pick the Claude .dmg you downloaded" of type {"public.disk-image", "com.apple.disk-image-udif"} '
+                  'default location (path to downloads folder))')
     elif kind == "folder":
         script = ('POSIX path of (choose folder with prompt '
                   '"Where should the backup go?")')
