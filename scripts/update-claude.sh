@@ -52,11 +52,14 @@ case "$(uname -m)" in arm64) ARCH=arm64 ;; *) ARCH=x64 ;; esac
 # A throwaway id: the feed requires one, but nothing here should be traceable to
 # this machine, and it is never written to disk.
 DID=$(uuidgen | tr 'A-Z' 'a-z')
+# The app sends the macOS version too. Without it the feed answers with an
+# older build than the one claude.com/download offers.
+OSV=$(sw_vers -productVersion)
 
 echo "==> Asking the release feed (darwin/$ARCH)..."
-FEED="https://$FEED_HOST/api/desktop/darwin/$ARCH/squirrel/update?device_id=$DID&version=$CUR"
+FEED="https://$FEED_HOST/api/desktop/darwin/$ARCH/squirrel/update?device_id=$DID&version=$CUR&os_version=$OSV"
 JSON=$(curl -fsS -m 30 "$FEED" 2>/dev/null) || {
-  FEED="https://$FEED_HOST/api/desktop/darwin/universal/squirrel/update?device_id=$DID&version=$CUR"
+  FEED="https://$FEED_HOST/api/desktop/darwin/universal/squirrel/update?device_id=$DID&version=$CUR&os_version=$OSV"
   JSON=$(curl -fsS -m 30 "$FEED" 2>/dev/null) || die "Could not reach the update feed."
 }
 

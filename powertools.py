@@ -1289,8 +1289,10 @@ def claude_update_status() -> dict:
     arch = "arm64" if platform.machine() == "arm64" else "x64"
     latest, err = "", ""
     try:
+        # the app sends os_version too; without it the feed offers an older build
         url = (f"https://api.anthropic.com/api/desktop/darwin/{arch}/squirrel/update"
-               f"?device_id={uuid.uuid4()}&version={inst or '0'}")
+               f"?device_id={uuid.uuid4()}&version={inst or '0'}"
+               f"&os_version={platform.mac_ver()[0]}")
         with urllib.request.urlopen(url, timeout=15) as r:
             body = r.read()
         if body.strip():
