@@ -132,15 +132,14 @@ def transcript_for(cli_id: str) -> str | None:
 
 def read_transcript(path: str, limit: int = 4000) -> list[dict]:
     """Parse a .jsonl transcript into messages of typed blocks, so the UI can
-    render prose as prose and tool calls as collapsible rows."""
+    render prose as prose and tool calls as collapsible rows. A chat longer
+    than limit keeps its newest messages."""
     msgs: list[dict] = []
     img_n = 0
     if not path or not os.path.exists(path):
         return msgs
     with open(path, errors="ignore") as fh:
         for line in fh:
-            if len(msgs) >= limit:
-                break
             if not line.startswith("{"):
                 continue
             try:
@@ -197,7 +196,7 @@ def read_transcript(path: str, limit: int = 4000) -> list[dict]:
             if not blocks:
                 continue
             msgs.append({"role": t, "ts": d.get("timestamp") or "", "blocks": blocks})
-    return msgs
+    return msgs[-limit:]
 
 
 

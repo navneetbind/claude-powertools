@@ -575,11 +575,14 @@ function renderChunk(reset){
         ${f.pages?` · ${f.pages} pages`:''}${f.size?` · ${(f.size/1e6).toFixed(1)} MB`:''}
         ${f.exists?'':'<span class="gone">· no longer on disk</span>'}</span></div>`).join('')+
       `<div class="dmeta" style="margin-top:6px">Only the path was saved, not the file itself.</div></div>`);
+    body.insertAdjacentHTML('beforeend','<div id="rmsgs"></div>');
   }
   const v=vis;
   if(!v.length){$('rcount').textContent='0 shown';body.innerHTML='<div class="empty">Nothing to show.</div>';return}
-  const next=v.slice(shown,shown+40);
-  body.insertAdjacentHTML('beforeend',next.map(m=>{
+  if(shown>=v.length)return;
+  const end=v.length-shown, next=v.slice(Math.max(0,end-40),end);
+  const before=body.scrollHeight;
+  $('rmsgs').insertAdjacentHTML('afterbegin',next.map(m=>{
     const stamp=`<div class="stamp">${esc(m.ts?new Date(m.ts).toLocaleString([],{dateStyle:'short',timeStyle:'short'}):'')}</div>`;
     const inner=m.blocks.map(blockHtml).join('');
     return m.role==='user'
@@ -588,6 +591,7 @@ function renderChunk(reset){
   }).join(''));
   shown+=next.length;
   clampLongMessages();
+  if(!reset)body.scrollTop+=body.scrollHeight-before;
   const q=$('rq').value.trim();
   $('rcount').textContent=q
     ? (matches.length?`match ${curMatch+1} of ${matches.length}`:'no matches in this chat')
@@ -612,10 +616,11 @@ function clampLongMessages(){
   });
 }
 
-/* load the next chunk as the reader nears the end - no button to press */
+/* the newest messages show first; older ones load as the reader scrolls up */
+function firstShown(){return vis.length-shown}
 function ensureRendered(i){
   let guard=0;
-  while(shown<=i && shown<vis.length && guard++<400)renderChunk(false);
+  while(firstShown()>i && guard++<400)renderChunk(false);
 }
 function gotoMatch(step){
   if(!matches.length)return;
@@ -623,7 +628,7 @@ function gotoMatch(step){
   const target=matches[curMatch];
   ensureRendered(target);
   const turns=$('rbody').querySelectorAll('.turn');
-  const el=turns[target];
+  const el=turns[target-firstShown()];
   if(el){
     turns.forEach(t=>t.classList.remove('curmatch'));
     el.classList.add('curmatch');
@@ -633,21 +638,22 @@ function gotoMatch(step){
   $('rprev').hidden=$('rnext').hidden=false;
 }
 function runFind(){
-  renderChunk(true);
-  matches=findMatches();curMatch=-1;
-  if(matches.length)gotoMatch(1);
+  renderChunk(true);toNewest();
+  matches=findMatches();curMatch=0;
+  if(matches.length)gotoMatch(-1);
   else{$('rcount').textContent=$('rq').value.trim()?'no matches in this chat':`${vis.length} messages`;
-       $('rprev').hidden=$('rnext').hidden=true;}
+       $('rprev').hidden=$('rnext').hidden=true;maybeMore();}
 }
 
 function maybeMore(){
   const p=$('rbody');
   if(shown>=vis.length)return;
-  if(p.scrollTop+p.clientHeight >= p.scrollHeight-900){
+  if(p.scrollTop<900){
     renderChunk(false);
     if(shown<vis.length&&p.scrollHeight<=p.clientHeight)maybeMore();
   }
 }
+function toNewest(){const p=$('rbody');p.scrollTop=p.scrollHeight}
 async function openChat(r){
   cur=r;$('ovread').classList.add('on');
   $('rtitle').textContent=r.title;$('rq').value='';
@@ -665,9 +671,10 @@ async function openChat(r){
   if(!msgs.length){$('rbody').innerHTML='<div class="empty">No transcript file on disk for this chat.</div>';return}
   matches=[];curMatch=-1;
   $('rq').value=window._bodyQuery||'';
-  renderChunk(true);
-  $('rbody').onscroll=maybeMore;
+  $('rbody').onscroll=null;
+  renderChunk(true);toNewest();
   if($('rq').value.trim())runFind(); else maybeMore();
+  $('rbody').onscroll=maybeMore;
 }
 
 /* ---------- transfer ---------- */
