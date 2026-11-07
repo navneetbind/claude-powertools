@@ -342,22 +342,24 @@ const esc=s=>(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"
 const when=ms=>ms?new Date(ms).toLocaleDateString('en-CA'):'—';
 const short=u=>u?u.slice(0,8):'';
 let scope=null,rows=[],sel=new Set(),tree=[],matched=0,lastAnchor=null;
-let cur=null,msgs=[],chatFiles=[],shown=0,mode='copy',lastMove=null,vis=[],matches=[],curMatch=-1;
+let cur=null,msgs=[],chatFiles=[],shown=0,mode='copy',lastMove=null,moveWarned=false,vis=[],matches=[],curMatch=-1;
 
 /* ---------- sidebar ---------- */
-function bucketName(b){return b.label||('account '+short(b.account))}
+function bucketName(b){return b.label||('Unknown account '+short(b.account))}
+function bucketTags(b){return (b.current===false?'<span class="badge" title="This app is signed into a different account now">old login</span>':'')+
+  (b.dupe?'<span class="badge" title="Another account shows the same name">same name</span>':'')}
 function drawTree(){
   const el=$('tree');let h='',inst=null,tot=0;
   for(const b of tree){
     tot+=b.count;
     if(b.instance!==inst){inst=b.instance;h+=`<div class="inst">${esc(inst)}</div>`}
     h+=`<div class="b${scope===b.key?' on':''}" data-k="${esc(b.key)}" data-a="${esc(b.account)}">
-      <div class="t"><span class="nm">${esc(bucketName(b))}</span>
+      <div class="t"><span class="nm">${esc(bucketName(b))}</span>${bucketTags(b)}
         <span class="acts">
           <button class="ico" data-act="info" title="Details and copy">i</button>
           <button class="ico" data-act="rename" title="Rename">✎</button>
         </span><span class="cnt">${b.count}</span></div>
-      <div class="s">${short(b.account)} · org ${short(b.org)}</div></div>`;
+      <div class="s">${b.current?'signed in · ':''}${short(b.account)} · org ${short(b.org)}${b.hint?' · seen in chats: '+esc(b.hint):''}</div></div>`;
   }
   el.innerHTML=`<div class="b${scope?'':' on'}" data-k=""><div class="t"><span class="nm">All chats</span><span class="cnt">${tot}</span></div></div>`+h;
   el.querySelectorAll('.b').forEach(n=>{
@@ -376,7 +378,7 @@ function drawTree(){
       scope=n.dataset.k||null;sel.clear();drawTree();load();
     };
   });
-  $('dest').innerHTML=tree.map(b=>`<option value="${esc(b.key)}">→ ${esc(bucketName(b))} · ${esc(b.instance)}</option>`).join('');
+  $('dest').innerHTML=tree.map(b=>`<option value="${esc(b.key)}">→ ${esc(bucketName(b))} · ${esc(b.instance)}${b.current===false?' (old login)':''}</option>`).join('');
 }
 
 /* ---------- table ---------- */
@@ -678,7 +680,8 @@ async function openMove(){
   const p=await api('/api/move',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({ids:[...sel],dest:$('dest').value,mode,dry:true})});
   const ow=p.steps.filter(s=>s.overwrite).length;
-  $('mplan').innerHTML=(p.steps.length?
+  moveWarned=!!(p.warnings&&p.warnings.length);
+  $('mplan').innerHTML=(moveWarned?p.warnings.map(w=>`<div class="warn">${esc(w)}</div>`).join(''):'')+(p.steps.length?
     `<div class="plan">`+p.steps.map(s=>`<div>${s.overwrite?'<span class="badge">overwrites</span>':''}<span>${esc(s.title)}</span></div>`).join('')+`</div>`
     :'<div class="warn">Nothing to transfer.</div>')+
     (p.skipped.length?`<div class="dmeta">${p.skipped.length} skipped (already there or missing)</div>`:'');
@@ -688,13 +691,13 @@ async function openMove(){
     'at the top of the window (or run <code>powertools undo</code>). Only the most recent transfer '+
     'can be reversed this way.';
   $('mgo').disabled=!p.steps.length;
-  $('mgo').textContent=mode==='move'?`Move ${p.steps.length}`:`Copy ${p.steps.length}`;
+  $('mgo').textContent=(mode==='move'?`Move ${p.steps.length}`:`Copy ${p.steps.length}`)+(moveWarned?' anyway':'');
 }
 async function runMove(){
   $('mgo').disabled=true;$('mgo').textContent='Working…';
   const dest=$('dest').value, destInst=(dest||'').split('/')[0];
   const r=await api('/api/move',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({ids:[...sel],dest,mode,dry:false})});
+    body:JSON.stringify({ids:[...sel],dest,mode,dry:false,force:moveWarned})});
   lastMove=r;$('ovmove').classList.remove('on');sel.clear();
   toast(`${r.moved} chat(s) transferred. Backup: ${r.backup}`);
   if(r.moved) await offerRestart(destInst);

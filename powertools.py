@@ -63,9 +63,25 @@ def instance_roots() -> list[tuple[str, str]]:
     return out
 
 
+def current_accounts() -> dict:
+    """The account each Claude app is signed into right now, as the app itself
+    records it. A folder for any other account in that app is an old login."""
+    out = {}
+    for inst, _ in instance_roots():
+        try:
+            with open(os.path.join(SUPPORT, inst, "config.json")) as fh:
+                uid = (json.load(fh) or {}).get("lastKnownAccountUuid")
+        except Exception:
+            uid = None
+        if uid:
+            out[inst] = uid
+    return out
+
+
 def buckets() -> list[dict]:
     """Every instance/account/org folder that can hold chats."""
     out = []
+    cur = current_accounts()
     for inst, root in instance_roots():
         for acct in sorted(os.listdir(root)):
             ap = os.path.join(root, acct)
@@ -84,6 +100,7 @@ def buckets() -> list[dict]:
                         "org": org,
                         "path": op,
                         "count": n,
+                        "current": cur.get(inst) == acct if inst in cur else None,
                     }
                 )
     return out
@@ -384,9 +401,16 @@ def build_index(fts: bool = False, progress=None) -> dict:
 
 
 def auto_labels() -> dict:
-    """Name each account. The signed-in account is recorded by Claude itself;
-    anything left over falls back to an email seen inside a transcript."""
-    out = {u: d["email"] for u, d in account_directory().items()}
+    """Name each account from Claude's own account records only. An email seen
+    inside a chat belongs to whoever was signed in when that chat ran, which is
+    not always the account whose folder the chat sits in."""
+    return {u: d["email"] for u, d in account_directory().items()}
+
+
+def email_hints() -> dict:
+    """The email most often seen inside each account's chats. A hint for naming
+    an account by hand, never a name in itself."""
+    out = {}
     c = connect()
     for r in c.execute(
         "SELECT account, email, COUNT(*) n FROM sessions "
@@ -1900,6 +1924,58 @@ ACCOUNT_RE = re.compile(
     r'.{0,400}?"organization":\{"id":\d+,"uuid":"([0-9a-f-]{36})","name":"([^"]*)"', re.S)
 
 
+# The claude.ai app also keeps its account record in IndexedDB, written as soon as
+# it loads after a login. Large values sit in blob files: a 3-byte header, then
+# snappy, then V8-serialised objects.
+V8_ACCOUNT_RE = re.compile(rb'"\x04uuid"\$([0-9a-f-]{36})"\remail_address')
+
+
+def _v8_str(d: bytes, i: int):
+    if i >= len(d) or d[i] not in (0x22, 0x63):
+        return None, i
+    n, j = _varint(d, i + 1)
+    raw = d[j:j + n]
+    return (raw.decode("latin1") if d[i] == 0x22 else raw.decode("utf-16-le", "ignore")), j + n
+
+
+def v8_accounts(d: bytes) -> list:
+    out = []
+    for m in V8_ACCOUNT_RE.finditer(d):
+        email, i = _v8_str(d, m.end())
+        if not email or "@" not in email:
+            continue
+        key, j = _v8_str(d, i)
+        name = _v8_str(d, j)[0] if key == "full_name" else None
+        out.append((m.group(1).decode(), email, name))
+    return out
+
+
+def idb_files(inst: str) -> list:
+    base = os.path.join(SUPPORT, inst, "IndexedDB")
+    fs = glob.glob(os.path.join(base, "https_claude.ai_*.indexeddb.blob", "**", "*"), recursive=True)
+    fs += glob.glob(os.path.join(base, "https_claude.ai_*.indexeddb.leveldb", "*.log"))
+    return sorted(f for f in fs if os.path.isfile(f))
+
+
+def idb_bytes(path: str) -> bytes:
+    d = open(path, "rb").read()
+    if d[:2] == b"\xff\x11":
+        try:
+            return _snappy(d[3:])
+        except Exception:
+            pass
+    return d
+
+
+def _account_files() -> list:
+    files = []
+    for inst, _ in instance_roots():
+        base = os.path.join(SUPPORT, inst, "Local Storage", "leveldb")
+        files += sorted(glob.glob(os.path.join(base, "*.ldb")) + glob.glob(os.path.join(base, "*.log")))
+        files += idb_files(inst)
+    return files
+
+
 _DESK_MEMO = {"sig": None, "data": {}}
 
 
@@ -1910,10 +1986,7 @@ def desktop_accounts() -> dict:
     Decompressing that cache in pure Python costs seconds, so the result is
     memoised on the cache files' (path, mtime, size) and also written to disk,
     so neither a page load nor a restart pays for it twice."""
-    files = []
-    for inst, _ in instance_roots():
-        base = os.path.join(SUPPORT, inst, "Local Storage", "leveldb")
-        files += sorted(glob.glob(os.path.join(base, "*.ldb")) + glob.glob(os.path.join(base, "*.log")))
+    files = _account_files()
     sig = [(f, os.path.getmtime(f), os.path.getsize(f)) for f in files if os.path.exists(f)]
     if _DESK_MEMO["sig"] == sig:
         return _DESK_MEMO["data"]
@@ -1952,6 +2025,17 @@ def _scan_desktop_accounts() -> dict:
                     out[uid] = {"email": email, "name": full or disp, "org": org_name,
                                 "org_uuid": org_uuid, "plan": None, "role": None,
                                 "source": f"{inst} app cache", "instance": inst}
+        for f in idb_files(inst):
+            try:
+                found = v8_accounts(idb_bytes(f))
+            except Exception:
+                continue
+            for uid, email, name in found:
+                prev = out.get(uid) or {}
+                out[uid] = {"email": email, "name": name or prev.get("name"),
+                            "org": prev.get("org"), "org_uuid": prev.get("org_uuid"),
+                            "plan": None, "role": None,
+                            "source": f"{inst} app IndexedDB", "instance": inst}
     return out
 
 
@@ -2637,8 +2721,38 @@ def usage_between(scope_sel: str, start_iso: str, end_iso: str) -> dict:
 # ---------------------------------------------------------------- move
 
 
+def named_buckets() -> list[dict]:
+    """buckets() with the name each one shows and why it can be trusted."""
+    labels, auto, hints = load_labels(), auto_labels(), email_hints()
+    who = account_directory()
+    bs = buckets()
+    for b in bs:
+        b["label"] = labels.get(b["account"]) or auto.get(b["account"])
+        b["who"] = who.get(b["account"])
+        b["hint"] = None if b["label"] else hints.get(b["account"])
+    owners = {}
+    for b in bs:
+        if b["label"]:
+            owners.setdefault(b["label"].lower(), set()).add(b["account"])
+    for b in bs:
+        b["dupe"] = bool(b["label"]) and len(owners[b["label"].lower()]) > 1
+    return bs
+
+
+def move_warnings(dest: dict) -> list[str]:
+    out = []
+    if dest.get("current") is False:
+        out.append(f"{dest['instance']} is signed into a different account now. Chats moved "
+                   "here stay hidden until you sign back into this one.")
+    if not dest.get("label"):
+        out.append("Nothing on this Mac confirms who this account is. Name it first.")
+    elif dest.get("dupe"):
+        out.append(f"Another account is also named {dest['label']}. Check which one you mean.")
+    return out
+
+
 def plan_move(reg_paths: list[str], dest_key: str, mode: str) -> dict:
-    dests = {b["key"]: b for b in buckets()}
+    dests = {b["key"]: b for b in named_buckets()}
     if dest_key not in dests:
         raise ValueError(f"unknown destination {dest_key}")
     dest = dests[dest_key]
@@ -2665,10 +2779,13 @@ def plan_move(reg_paths: list[str], dest_key: str, mode: str) -> dict:
                 "overwrite": os.path.exists(target),
             }
         )
-    return {"dest": dest, "mode": mode, "steps": steps, "skipped": skipped}
+    return {"dest": dest, "mode": mode, "steps": steps, "skipped": skipped,
+            "warnings": move_warnings(dest)}
 
 
 def apply_move(plan: dict) -> dict:
+    if not plan["steps"]:
+        return {"moved": 0, "backup": None, "stamp": None}
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     bdir = os.path.join(BACKUPS, stamp)
     os.makedirs(bdir, exist_ok=True)
@@ -2829,14 +2946,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._auth(qs):
             return self._send(403, json.dumps({"error": "bad token"}))
         if u.path == "/api/tree":
-            labels = load_labels()
-            auto = auto_labels()
-            who = account_directory()
-            bs = buckets()
-            for b in bs:
-                b["label"] = labels.get(b["account"]) or auto.get(b["account"])
-                b["who"] = who.get(b["account"])
-            return self._ok({"buckets": bs})
+            return self._ok({"buckets": named_buckets()})
         if u.path == "/api/usage":
             return self._ok(usage_report(int(qs.get("days", ["30"])[0])))
         if u.path == "/api/usage_between":
@@ -3083,8 +3193,11 @@ class Handler(BaseHTTPRequestHandler):
                             for s in plan["steps"]
                         ],
                         "skipped": plan["skipped"],
+                        "warnings": plan["warnings"],
                     }
                 )
+            if plan["warnings"] and not payload.get("force"):
+                return self._send(409, json.dumps({"error": " ".join(plan["warnings"])}))
             res = apply_move(plan)
             build_index()
             return self._ok(res)
@@ -3220,6 +3333,7 @@ def main():
     m.add_argument("--match", help="only chats whose title contains this")
     m.add_argument("--mode", choices=["copy", "move"], default="copy")
     m.add_argument("--yes", action="store_true", help="skip the dry run")
+    m.add_argument("--force", action="store_true", help="transfer despite account warnings")
 
     sub.add_parser("undo", help="reverse the last move")
     mem = sub.add_parser("memory", help="what Claude has written down about you")
@@ -3296,14 +3410,18 @@ def main():
         return fmt_rows(query(q=a.text, fts=a.fts, limit=a.limit))
 
     if cmd == "accounts":
-        labels, auto = load_labels(), auto_labels()
         inst = None
-        for b in buckets():
+        for b in named_buckets():
             if b["instance"] != inst:
                 inst = b["instance"]
                 print(f"\n{inst}")
-            name = labels.get(b["account"]) or auto.get(b["account"]) or "(unlabelled)"
-            print(f"  {b['count']:>4}  {name:<28} {b['key']}")
+            name = b["label"] or "(unknown account)"
+            tag = {True: "signed in", False: "old login"}.get(b["current"], "")
+            if b["dupe"]:
+                tag += " · same name as another account"
+            if b["hint"]:
+                tag += f" · seen in chats: {b['hint']}"
+            print(f"  {b['count']:>4}  {name:<28} {tag:<12} {b['key']}")
         print("\nname one with:  powertools label <account-uuid> \"my work account\"")
         return
 
@@ -3325,8 +3443,12 @@ def main():
             print("   " + ("! overwrite  " if s2["overwrite"] else "  ") + s2["title"][:66])
         for s2 in plan["skipped"]:
             print("   skip: " + s2["why"])
+        for w in plan["warnings"]:
+            print("   warning: " + w)
         if not a.yes:
             return print("\ndry run. add --yes to apply.")
+        if plan["warnings"] and not a.force:
+            return print("\nnot transferred: fix the warnings above, or add --force.")
         res = apply_move(plan)
         build_index()
         print(f"\ndone: {res['moved']} chat(s)\nbackup: {res['backup']}")
